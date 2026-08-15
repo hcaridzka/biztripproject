@@ -1,16 +1,18 @@
 import { useState, useMemo } from 'react';
-import { Truck, Check, Fuel, Gauge, Car, UserCheck } from 'lucide-react';
+import { Truck, Check, Fuel, Gauge, Car, UserCheck, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Field, Textarea, EmptyState, StatusBadge, formatIDR } from './ui-shared';
 import { formatDate, daysBetween } from '../lib/utils';
 import { supabase } from '../lib/supabase';
+import { PdfPrint } from './PdfPrint';
 import type { BizTrip } from '../lib/types';
 
 export function PicObligo() {
   const { profile } = useAuth();
   const { trips, vehicles, drivers, updateTrip, showToast, refresh } = useApp();
   const [selected, setSelected] = useState<BizTrip | null>(null);
+  const [printTripId, setPrintTripId] = useState<string | null>(null);
   const [vehicleType, setVehicleType] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [vehicleKm, setVehicleKm] = useState('');
@@ -82,7 +84,10 @@ export function PicObligo() {
                   </div>
                   <StatusBadge status={t.status} />
                 </div>
-                <div className="mt-3"><Button size="sm" variant="secondary" onClick={() => startReview(t)}>Assign Vehicle</Button></div>
+                <div className="mt-3 flex items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => startReview(t)}>Assign Vehicle</Button>
+                  <Button size="sm" variant="ghost" icon={<Printer className="w-3.5 h-3.5" />} onClick={() => setPrintTripId(t.id)}>Cetak PDF SPD</Button>
+                </div>
               </div>
             ))}
           </div>
@@ -139,6 +144,11 @@ export function PicObligo() {
             <Button size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={submit}>Submit Assignment</Button>
           </div>
         </Card>
+      )}
+
+      {/* Modal Cetak PDF */}
+      {printTripId && (
+        <PdfPrint tripId={printTripId} mode="advance" onClose={() => setPrintTripId(null)} />
       )}
     </div>
   );
