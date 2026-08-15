@@ -353,9 +353,9 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
           </Field>
           <Field label="Total Distance (Insentif Jarak)" hint="Insentif khusus driver">
             <Select value={totalDistance} onChange={(e) => setTotalDistance(e.target.value as TotalDistanceOption)}>
-              <option value="none">Kurang dari 200 km (Rp 0)</option>
-              <option value="gt200">&gt; 200 km (Rp 50.000)</option>
-              <option value="gt400">&gt; 400 km (Rp 100.000)</option>
+              <option value="none">Kurang dari 200 km </option>
+              <option value="gt200">&gt; 200 km </option>
+              <option value="gt400">&gt; 400 km </option>
             </Select>
           </Field>
           <Field label="Tujuan Perjalanan" required>
