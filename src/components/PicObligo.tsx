@@ -21,7 +21,8 @@ export function PicObligo() {
   const [etollCost, setEtollCost] = useState(0);
   const [note, setNote] = useState('');
 
-  const queue = useMemo(() => trips.filter((t) => t.status === 'Pending PIC Obligo' && (t.needs_vehicle || t.needs_driver)), [trips]);
+  // Antrean khusus trip yang statusnya Pending PIC Obligo
+  const queue = useMemo(() => trips.filter((t) => t.status === 'Pending PIC Obligo'), [trips]);
 
   const startReview = (t: BizTrip) => {
     setSelected(t);
@@ -52,8 +53,16 @@ export function PicObligo() {
         obligo_approved_at: new Date().toISOString(),
         status: 'Pending Direksi Approval',
       });
-      await supabase.from('trip_tracking').insert({ trip_id: selected.id, actor_name: profile?.name ?? '', actor_role: 'PIC Obligo', action: 'Vehicle assigned -> Pending Direksi', from_status: 'Pending PIC Obligo', to_status: 'Pending Direksi Approval', remarks: `${vehiclePlate} · BBM ${fuelCost} · Toll ${etollCost}` });
-      showToast('success', 'Penugasan kendaraan berhasil disubmit');
+      await supabase.from('trip_tracking').insert({ 
+        trip_id: selected.id, 
+        actor_name: profile?.name ?? '', 
+        actor_role: 'PIC Obligo', 
+        action: 'Vehicle assigned -> Pending Direksi', 
+        from_status: 'Pending PIC Obligo', 
+        to_status: 'Pending Direksi Approval', 
+        remarks: `${vehiclePlate} · BBM ${fuelCost} · Toll ${etollCost}` 
+      });
+      showToast('success', 'Penugasan kendaraan berhasil disubmit dan dilanjutkan ke Direksi');
       setSelected(null);
       refresh();
     } catch (e: any) { showToast('error', 'Gagal: ' + e.message); }
@@ -80,7 +89,7 @@ export function PicObligo() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-slate-800 truncate">{t.purpose}</div>
                     <div className="text-xs text-slate-400 mt-0.5">{t.requester_name} · {t.origin} → {t.itinerary?.[0]?.destination ?? '-'} · {formatDate(t.departure_date)} · {daysBetween(t.departure_date, t.return_date)} hari</div>
-                    <div className="text-xs text-slate-500 mt-1">Transport: {t.vehicle_type_choice} · Driver: {t.needs_driver ? 'Ya' : 'Tidak'}</div>
+                    <div className="text-xs text-slate-500 mt-1">Transport: {t.transport_type} · Driver: {t.requires_driver ? 'Ya' : 'Tidak'}</div>
                   </div>
                   <StatusBadge status={t.status} />
                 </div>
