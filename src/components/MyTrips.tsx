@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { MapPin, FileText, RotateCcw, X, Calendar, CheckCircle2 } from 'lucide-react';
+import { MapPin, FileText, RotateCcw, X, Calendar, CheckCircle2, Play } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { Card, Button, EmptyState, StatusBadge, Modal, Textarea, Field, formatIDR } from './ui-shared';
@@ -25,7 +25,15 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
         const today = new Date().toISOString().slice(0, 10);
         if (t.departure_date <= today) {
           updateTrip(t.id, { status: 'On Trip' });
-          supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: 'System', actor_role: 'System', action: 'Auto Start Trip', from_status: 'Approved / Ready for Trip', to_status: 'On Trip', remarks: 'Auto-activated by date' });
+          supabase.from('trip_tracking').insert({ 
+            trip_id: t.id, 
+            actor_name: 'System', 
+            actor_role: 'System', 
+            action: 'Auto Start Trip', 
+            from_status: 'Approved / Ready for Trip', 
+            to_status: 'On Trip', 
+            remarks: 'Auto-activated by date' 
+          });
         }
       }
     });
@@ -35,24 +43,56 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
     const justification = window.prompt('Tulis justifikasi permintaan Re-Review:');
     if (!justification?.trim()) return;
     await updateTrip(t.id, { status: 'Pending Manager Approval', review_justification: justification, reject_reason: null });
-    await supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Request Re-Review', from_status: t.status, to_status: 'Pending Manager Approval', remarks: justification });
+    await supabase.from('trip_tracking').insert({ 
+      trip_id: t.id, 
+      actor_name: profile?.name ?? '', 
+      actor_role: 'Employee', 
+      action: 'Request Re-Review', 
+      from_status: t.status, 
+      to_status: 'Pending Manager Approval', 
+      remarks: justification 
+    });
     showToast('success', 'Re-Review diajukan');
     refresh();
   };
 
   const startTrip = async (t: BizTrip) => {
     await updateTrip(t.id, { status: 'On Trip' });
-    await supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Start Trip', from_status: 'Approved / Ready for Trip', to_status: 'On Trip' });
+    await supabase.from('trip_tracking').insert({ 
+      trip_id: t.id, 
+      actor_name: profile?.name ?? '', 
+      actor_role: 'Employee', 
+      action: 'Start Trip', 
+      from_status: 'Approved / Ready for Trip', 
+      to_status: 'On Trip' 
+    });
     showToast('success', 'Trip dimulai');
     refresh();
   };
 
   const doCancel = async () => {
-    if (!cancelTrip || !cancelReason.trim()) { showToast('error', 'Catatan alasan wajib diisi'); return; }
-    await updateTrip(cancelTrip.id, { status: 'Rejected', cancel_reason_category: 'Cancel/Reschedule', cancel_reason_detail: cancelReason, reject_reason: `Cancel/Reschedule: ${cancelReason}` });
-    await supabase.from('trip_tracking').insert({ trip_id: cancelTrip.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Cancel/Reschedule', from_status: cancelTrip.status, to_status: 'Rejected', remarks: cancelReason });
+    if (!cancelTrip || !cancelReason.trim()) { 
+      showToast('error', 'Catatan alasan wajib diisi'); 
+      return; 
+    }
+    await updateTrip(cancelTrip.id, { 
+      status: 'Rejected', 
+      cancel_reason_category: 'Cancel/Reschedule', 
+      cancel_reason_detail: cancelReason, 
+      reject_reason: `Cancel/Reschedule: ${cancelReason}` 
+    });
+    await supabase.from('trip_tracking').insert({ 
+      trip_id: cancelTrip.id, 
+      actor_name: profile?.name ?? '', 
+      actor_role: 'Employee', 
+      action: 'Cancel/Reschedule', 
+      from_status: cancelTrip.status, 
+      to_status: 'Rejected', 
+      remarks: cancelReason 
+    });
     showToast('success', 'Pengajuan dibatalkan/dijadwalkan ulang');
-    setCancelTrip(null); setCancelReason('');
+    setCancelTrip(null); 
+    setCancelReason('');
     refresh();
   };
 
@@ -64,7 +104,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
           <Button variant="secondary" size="sm" onClick={() => setSelectedId(null)}>← Back</Button>
           <div className="flex gap-2">
             {selected.status === 'Approved / Ready for Trip' && (
-              <Button size="sm" icon={<MapPin className="w-3.5 h-3.5" />} onClick={() => startTrip(selected)}>Start Trip</Button>
+              <Button size="sm" icon={<Play className="w-3.5 h-3.5" />} onClick={() => startTrip(selected)}>Start Trip</Button>
             )}
             {canCancel && (
               <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => { setCancelTrip(selected); setCancelReason(''); }}>Cancel / Reschedule</Button>
@@ -107,10 +147,20 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
                   </div>
                   <StatusBadge status={t.status} />
                 </div>
-                <div className="mt-2 flex gap-2 flex-wrap">
-                  {t.status === 'Rejected' && <Button size="sm" variant="secondary" icon={<RotateCcw className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); requestReReview(t); }}>Re-Review</Button>}
-                  {(t.status === 'Approved / Ready for Trip' || t.status === 'On Trip' || t.status === 'Completed') && <Button size="sm" variant="secondary" icon={<FileText className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); onPrint(t.id); }}>Cetak PDF</Button>}
-                  {canCancel && <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); setCancelTrip(t); setCancelReason(''); }}>Cancel / Reschedule</Button>}
+                <div className="mt-3 flex gap-2 flex-wrap items-center">
+                  {/* Posisi Start Trip dipindah ke paling awal */}
+                  {t.status === 'Approved / Ready for Trip' && (
+                    <Button size="sm" icon={<Play className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); startTrip(t); }}>Start Trip</Button>
+                  )}
+                  {t.status === 'Rejected' && (
+                    <Button size="sm" variant="secondary" icon={<RotateCcw className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); requestReReview(t); }}>Re-Review</Button>
+                  )}
+                  {(t.status === 'Approved / Ready for Trip' || t.status === 'On Trip' || t.status === 'Completed') && (
+                    <Button size="sm" variant="secondary" icon={<FileText className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); onPrint(t.id); }}>Cetak PDF</Button>
+                  )}
+                  {canCancel && (
+                    <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); setCancelTrip(t); setCancelReason(''); }}>Cancel / Reschedule</Button>
+                  )}
                 </div>
               </Card>
             );
@@ -119,7 +169,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
       )}
 
       {/* Cancel/Reschedule modal */}
-      <Modal open={!!cancelTrip} onClose={() => setCancelTrip(null)} title="Cancel / Reschedule Request" size="sm">
+      <Modal open={!!cancelTrip} onClose={() => setCancelTrip(null)} title="Cancel / Reschedule Request">
         <div className="space-y-4">
           <div className="rounded-xl bg-rose-50 ring-1 ring-rose-200 p-3 text-sm text-rose-700">
             Anda akan membatalkan/menjadwalkan ulang: <strong>{cancelTrip?.purpose}</strong>
