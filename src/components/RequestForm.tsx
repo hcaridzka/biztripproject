@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   FilePlus, Plus, Trash2, Calendar, Users, MapPin, AlertCircle,
-  Paperclip, Send, Calculator, Building2, Clock,
+  Paperclip, Send, Calculator, Building2, Clock, Gauge,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -13,7 +13,7 @@ import {
 import { uid, daysBetween, computeCost, computePettyCash, defaultKPScheme, autoKPSchemeForLeg, dkTiersForOrigin } from '../lib/costCalc';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
-import type { ItineraryLeg, Participant, ParticipantCategory, Jabatan, DKTier, TransportChoice, TripCategory } from '../lib/types';
+import type { ItineraryLeg, Participant, ParticipantCategory, Jabatan, DKTier, TransportChoice, TripCategory, TotalDistanceOption } from '../lib/types';
 
 export function RequestForm({ onDone }: { onDone: () => void }) {
   const { profile } = useAuth();
@@ -28,6 +28,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
   const [purpose, setPurpose] = useState('');
   const [needsVehicle, setNeedsVehicle] = useState<TransportChoice>('Kendaraan Dinas');
   const [needsDriver, setNeedsDriver] = useState(true);
+  const [totalDistance, setTotalDistance] = useState<TotalDistanceOption>('none');
   const [companyBurdens, setCompanyBurdens] = useState<string[]>([]);
   const [tripCategory, setTripCategory] = useState<TripCategory>(null);
   
@@ -124,8 +125,17 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
 
   const preview = useMemo(() => {
     if (itinerary.length === 0 || !depDate || !retDate) return null;
-    return computeCost({ participants: allParticipants, days, itinerary, origin, tripCategory, kpScheme, needsDriver });
-  }, [allParticipants, days, itinerary, origin, tripCategory, kpScheme, needsDriver, depDate, retDate]);
+    return computeCost({ 
+      participants: allParticipants, 
+      days, 
+      itinerary, 
+      origin, 
+      tripCategory, 
+      kpScheme, 
+      needsDriver,
+      totalDistance 
+    });
+  }, [allParticipants, days, itinerary, origin, tripCategory, kpScheme, needsDriver, totalDistance, depDate, retDate]);
 
   const pettyPreview = useMemo(() => computePettyCash(allParticipants, itinerary), [allParticipants, itinerary]);
 
@@ -211,7 +221,17 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
       ? 'Pending PIC Obligo Approval' 
       : 'Pending Manager Approval';
 
-    const cost = computeCost({ participants: allParticipants, days, itinerary, origin, tripCategory, kpScheme, needsDriver });
+    const cost = computeCost({ 
+      participants: allParticipants, 
+      days, 
+      itinerary, 
+      origin, 
+      tripCategory, 
+      kpScheme, 
+      needsDriver,
+      totalDistance 
+    });
+
     const { data: inserted, error } = await supabase.from('biz_trips').insert({
       user_id: profile?.id,
       requester_name: profile?.name,
@@ -227,6 +247,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
       needs_vehicle: needsVehicle === 'Kendaraan Dinas',
       vehicle_type_choice: needsVehicle,
       needs_driver: needsDriver,
+      total_distance: totalDistance,
       company_burden: companyBurdens,
       trip_category: tripCategory,
       itinerary, participants: allParticipants,
@@ -318,7 +339,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
           </div>
         )}
 
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-4 gap-4">
           <Field label="Kebutuhan Transportasi" required>
             <Select value={needsVehicle} onChange={(e) => setNeedsVehicle(e.target.value as TransportChoice)}>
               {TRANSPORT_CHOICES.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -328,6 +349,13 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
             <Select value={needsDriver ? 'ya' : 'tidak'} onChange={(e) => setNeedsDriver(e.target.value === 'ya')}>
               <option value="tidak">Tidak</option>
               <option value="ya">Ya</option>
+            </Select>
+          </Field>
+          <Field label="Total Distance (Insentif Jarak)" hint="Insentif khusus driver">
+            <Select value={totalDistance} onChange={(e) => setTotalDistance(e.target.value as TotalDistanceOption)}>
+              <option value="none">Kurang dari 200 km (Rp 0)</option>
+              <option value="gt200">&gt; 200 km (Rp 50.000)</option>
+              <option value="gt400">&gt; 400 km (Rp 100.000)</option>
             </Select>
           </Field>
           <Field label="Tujuan Perjalanan" required>
@@ -454,9 +482,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
           </div>
         )}
       </Card>
-    </div>
-  );
-}
+
       {/* Pegawai Pemohon auto-included banner */}
       <Card className="p-4 ring-brand-200 bg-brand-50/30">
         <div className="flex items-center gap-3">
@@ -512,7 +538,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
                         {PT_OPTIONS.map((pt) => <option key={pt} value={pt}>{pt}</option>)}
                       </Select>
                       <Select value={p.jabatan} onChange={(e) => updateParticipant(p.id, { jabatan: e.target.value as Jabatan })}>
-                        {JABATAN_LEVELS.filter((j) => j !== 'TAD').map((j) => <option key={j} value={j}>{j}</option>)}
+                        {JABATAN_LEVELS.map((j) => <option key={j} value={j}>{j}</option>)}
                       </Select>
                     </>
                   ) : (
@@ -591,8 +617,9 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
           <div className="border-t border-slate-200 pt-3 space-y-1.5">
             <Row label="Total Tunjangan" value={formatIDR(preview.perDiemTotal)} />
             <Row label="Total Akomodasi Hotel" value={formatIDR(preview.hotelTotal)} />
+            <Row label="Insentif Jarak" value={formatIDR(preview.driverTotal)} />
             <Row label="Total Petty Cash" value={formatIDR(preview.pettyCashTotal)} />
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
               <span className="text-sm font-bold text-brand-800">In Total (Estimasi Awal)</span>
               <span className="text-lg font-bold text-brand-800">{formatIDR(preview.grandTotal)}</span>
             </div>
