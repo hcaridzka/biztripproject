@@ -25,14 +25,21 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
   const ptMatches = (t: BizTrip) => isSuperAdmin || ptAccess.length === 0 || t.company_burden.some((b) => ptAccess.includes(b));
   const ptFilterMatches = (t: BizTrip) => !ptFilter || t.company_burden.includes(ptFilter);
 
+  // Perbaikan antrean: Manager hanya memproses Pending Manager, Direksi hanya Pending Direksi
   const queue = useMemo(() => {
     let list: BizTrip[];
-    if (role === 'Manager') list = trips.filter((t) => (t.status === 'Pending Manager Approval') && ptMatches(t));
-    else if (role === 'Direksi') list = trips.filter((t) => (t.status === 'Pending Direksi Approval') && ptMatches(t));
-    else if (role === 'HR Manager') list = trips.filter((t) => ['Pending Manager Approval', 'Pending PIC Obligo', 'Pending Direksi Approval', 'Pending HR Advance Review'].includes(t.status) && ptMatches(t));
-    else list = [];
+    if (role === 'Manager') {
+      list = trips.filter((t) => t.status === 'Pending Manager Approval' && ptMatches(t));
+    } else if (role === 'Direksi') {
+      list = trips.filter((t) => t.status === 'Pending Direksi Approval' && ptMatches(t));
+    } else if (role === 'HR Manager') {
+      // HR Manager dapat memantau seluruh tahapan review
+      list = trips.filter((t) => ['Pending Manager Approval', 'Pending PIC Obligo', 'Pending Direksi Approval', 'Pending HR Advance Review'].includes(t.status) && ptMatches(t));
+    } else {
+      list = [];
+    }
     return list.filter(ptFilterMatches);
-  }, [trips, role, ptFilter]);
+  }, [trips, role, ptFilter, ptAccess, isSuperAdmin]);
 
   const ptFilterOptions = useMemo(() => {
     const set = new Set<string>(isSuperAdmin ? PT_OPTIONS : ptAccess);
@@ -45,24 +52,21 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
       let nextStatus: TripStatus = t.status;
       const patch: Partial<BizTrip> = {};
 
-      // Logika Bypass Obligo / Kebutuhan Kendaraan
-      const isBypassObligo = t.bypass_obligo || (!t.requires_vehicle && !t.requires_driver) || t.transport_type === 'Transportasi Umum' || (t.transport_type === 'Kendaraan Pribadi' && !t.requires_driver);
+      // Evaluasi apakah trip butuh kendaraan atau driver
+      const requiresObligo = t.requires_vehicle === true || t.needs_vehicle === true || t.requires_driver === true || t.needs_driver === true;
 
       if (t.status === 'Pending Manager Approval') {
-        // Alur: Manager -> PIC Obligo (atau langsung Direksi jika bypass)
-        nextStatus = isBypassObligo ? 'Pending Direksi Approval' : 'Pending PIC Obligo';
+        // Jika butuh kendaraan/driver -> Wajib ke Pending PIC Obligo. Jika tidak -> Langsung ke Direksi.
+        nextStatus = requiresObligo ? 'Pending PIC Obligo' : 'Pending Direksi Approval';
         patch.manager_approved_by = profile?.name ?? '';
         patch.manager_approved_at = new Date().toISOString();
-      } else if (t.status === 'Pending PIC Obligo' && role === 'HR Manager') {
-        // Antisipasi jika HR membantu approve PIC Obligo
-        nextStatus = 'Pending Direksi Approval';
       } else if (t.status === 'Pending Direksi Approval') {
-        // Alur: Direksi -> HR Review
+        // Dari Direksi -> Lanjut ke HR Review
         nextStatus = 'Pending HR Advance Review';
         patch.direksi_approved_by = profile?.name ?? '';
         patch.direksi_approved_at = new Date().toISOString();
       } else if (t.status === 'Pending HR Advance Review' && role === 'HR Manager') {
-        // Alur: HR Review -> Siap Berangkat
+        // Dari HR Manager -> Siap Berangkat
         nextStatus = 'Approved / Ready for Trip';
         patch.hr_approved_by = profile?.name ?? '';
         patch.hr_approved_at = new Date().toISOString();
