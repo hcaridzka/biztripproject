@@ -29,7 +29,7 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
     let list: BizTrip[];
     if (role === 'Manager') list = trips.filter((t) => (t.status === 'Pending Manager Approval') && ptMatches(t));
     else if (role === 'Direksi') list = trips.filter((t) => (t.status === 'Pending Direksi Approval') && ptMatches(t));
-    else if (role === 'HR Manager') list = trips.filter((t) => ['Pending Manager Approval', 'Pending Direksi Approval', 'Pending HR Advance Review'].includes(t.status));
+    else if (role === 'HR Manager') list = trips.filter((t) => ['Pending Manager Approval', 'Pending PIC Obligo', 'Pending Direksi Approval', 'Pending HR Advance Review'].includes(t.status) && ptMatches(t));
     else list = [];
     return list.filter(ptFilterMatches);
   }, [trips, role, ptFilter]);
@@ -45,18 +45,27 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
       let nextStatus: TripStatus = t.status;
       const patch: Partial<BizTrip> = {};
 
-      // Cek Logika Bypass Obligo (Poin 5 Matriks)
+      // Logika Bypass Obligo / Kebutuhan Kendaraan
       const isBypassObligo = t.bypass_obligo || (!t.requires_vehicle && !t.requires_driver) || t.transport_type === 'Transportasi Umum' || (t.transport_type === 'Kendaraan Pribadi' && !t.requires_driver);
 
       if (t.status === 'Pending Manager Approval') {
-        // Jika bypass -> Langsung ke Direksi / HR, Jika tidak -> Masuk PIC Obligo
+        // Alur: Manager -> PIC Obligo (atau langsung Direksi jika bypass)
         nextStatus = isBypassObligo ? 'Pending Direksi Approval' : 'Pending PIC Obligo';
         patch.manager_approved_by = profile?.name ?? '';
         patch.manager_approved_at = new Date().toISOString();
+      } else if (t.status === 'Pending PIC Obligo' && role === 'HR Manager') {
+        // Antisipasi jika HR membantu approve PIC Obligo
+        nextStatus = 'Pending Direksi Approval';
       } else if (t.status === 'Pending Direksi Approval') {
+        // Alur: Direksi -> HR Review
         nextStatus = 'Pending HR Advance Review';
         patch.direksi_approved_by = profile?.name ?? '';
         patch.direksi_approved_at = new Date().toISOString();
+      } else if (t.status === 'Pending HR Advance Review' && role === 'HR Manager') {
+        // Alur: HR Review -> Siap Berangkat
+        nextStatus = 'Approved / Ready for Trip';
+        patch.hr_approved_by = profile?.name ?? '';
+        patch.hr_approved_at = new Date().toISOString();
       }
 
       patch.status = nextStatus;
@@ -70,7 +79,7 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
         to_status: nextStatus 
       });
 
-      showToast('success', 'Pengajuan disetujui');
+      showToast('success', 'Pengajuan berhasil disetujui');
       refresh();
       setSelected(null);
     } catch (e: any) { showToast('error', 'Gagal approve: ' + e.message); }
@@ -134,7 +143,7 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
       </div>
 
       {/* PT Filter */}
-      {(role === 'Manager' || role === 'Direksi') && ptFilterOptions.length > 0 && (
+      {(role === 'Manager' || role === 'Direksi' || role === 'HR Manager') && ptFilterOptions.length > 0 && (
         <Card className="p-4">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 shrink-0">
@@ -164,37 +173,26 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
       {/* Queue list */}
       <Card className="p-6">
         {queue.length === 0 ? (
-          <EmptyState icon={<CheckSquare className="w-6 h-6" />} title="Tidak ada pengajuan menunggu" message="Antrean approval kosong untuk PT filter ini." />
+          <EmptyState icon={<CheckSquare className="w-6 h-6" />} title="Tidak ada pengajuan menunggu" message="Antrean approval kosong untuk filter ini." />
         ) : (
           <div className="space-y-3">
             {queue.map((t) => (
               <div key={t.id} className="rounded-xl ring-1 ring-slate-200 hover:ring-brand-400 transition p-4 bg-white shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setSelected(t); setSelectedTrip(t.id); }}>
-                    {/* Display Prominent: Nama Pegawai Pemohon & PT */}
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                      <span className="text-base font-extrabold text-slate-900">
-                        {t.requester_name}
-                      </span>
-                      <span className="text-xs font-medium text-slate-500">
-                        ({t.requester_jabatan ?? 'Pegawai Pemohon'})
-                      </span>
+                      <span className="text-base font-extrabold text-slate-900">{t.requester_name}</span>
+                      <span className="text-xs font-medium text-slate-500">({t.requester_jabatan ?? 'Pegawai Pemohon'})</span>
                       <div className="flex flex-wrap gap-1 ml-1">
                         {t.company_burden.map((pt) => (
-                          <span key={pt} className="px-2.5 py-0.5 rounded-md bg-brand-100 text-brand-800 text-xs font-black border border-brand-300">
-                            {pt}
-                          </span>
+                          <span key={pt} className="px-2.5 py-0.5 rounded-md bg-brand-100 text-brand-800 text-xs font-black border border-brand-300">{pt}</span>
                         ))}
                       </div>
                     </div>
-
-                    {/* Purpose & Route */}
                     <div className="text-sm font-semibold text-slate-700 truncate">{t.purpose}</div>
                     <div className="text-xs text-slate-500 mt-0.5">
                       {t.origin} → {t.itinerary?.[0]?.destination ?? '-'} · {formatDate(t.departure_date)} · {daysBetween(t.departure_date, t.return_date)} hari
                     </div>
-
-                    {/* Grand Total */}
                     <div className="text-xs font-bold text-brand-700 mt-2 bg-brand-50/60 inline-block px-2.5 py-1 rounded-md border border-brand-200">
                       Estimasi Grand Total: {formatIDR(Number(t.cost_grand_total) || 0)}
                     </div>
@@ -224,7 +222,6 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
             <DetailRow label="Unit PT Beban" value={selected.company_burden.join(', ')} isBold />
             <DetailRow label="Keperluan / Tujuan" value={selected.purpose} />
             <DetailRow label="Rute Itinerary" value={selected.itinerary?.map((l) => `${l.destination}${l.destination_custom ? ` (${l.destination_custom})` : ''}`).join(' → ') ?? '-'} />
-            <DetailRow label="Partisipan Dinas" value={selected.participants?.length ? selected.participants.map((p) => `${p.name} (${p.jabatan})`).join(', ') : 'Hanya Pegawai Pemohon Utama'} />
             <DetailRow label="Estimasi Grand Total" value={formatIDR(Number(selected.cost_grand_total) || 0)} isBold />
           </div>
           <div className="flex gap-2 mt-5 pt-3 border-t border-slate-100">
