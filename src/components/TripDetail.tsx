@@ -1,7 +1,14 @@
-import { MapPin, Users, Calendar, FileText, Truck, Calculator, RotateCcw, MessageSquare } from 'lucide-react';
+import { MapPin, Users, Calendar, FileText, Truck, Calculator, RotateCcw, MessageSquare, Gauge } from 'lucide-react';
 import { Card, StatusBadge, Button, formatIDR, EmptyState } from './ui-shared';
 import { formatDate, formatDateTime, daysBetween } from '../lib/utils';
 import type { BizTrip } from '../lib/types';
+
+// Helper Formatter untuk Total Distance / Insentif Jarak
+function formatDistanceLabel(dist?: string) {
+  if (dist === 'gt200') return '> 200 km (Insentif Rp 50.000)';
+  if (dist === 'gt400') return '> 400 km (Insentif Rp 100.000)';
+  return '< 200 km (Tanpa Insentif)';
+}
 
 export function TripDetail({ trip, onPrint }: { trip: BizTrip | null; onPrint?: (id: string) => void }) {
   if (!trip) return <EmptyState icon={<MapPin className="w-6 h-6" />} title="Pilih trip untuk melihat detail" />;
@@ -20,18 +27,32 @@ export function TripDetail({ trip, onPrint }: { trip: BizTrip | null; onPrint?: 
           </div>
           <StatusBadge status={trip.status} />
         </div>
+        
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-xs">
           <Info label="Origin" value={trip.origin + (trip.origin_custom ? ` (${trip.origin_custom})` : '')} />
           <Info label="Departure" value={`${formatDate(trip.departure_date)} ${trip.departure_time ?? ''}`} />
           <Info label="Return" value={`${formatDate(trip.return_date)} ${trip.return_time ?? ''}`} />
           <Info label="Duration" value={`${days} hari`} />
         </div>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-xs">
           <Info label="KP Scheme" value={trip.kp_scheme} />
           <Info label="Transport" value={trip.vehicle_type_choice ?? '-'} />
           <Info label="Driver" value={trip.needs_driver ? 'Ya' : 'Tidak'} />
           <Info label="Grand Total" value={formatIDR(Number(trip.cost_grand_total) || 0)} />
         </div>
+
+        {/* Tambahan Info Insentif Jarak (Driver) */}
+        {trip.needs_driver && trip.total_distance && (
+          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2">
+            <Gauge className="w-4 h-4 text-amber-500" />
+            <span className="text-xs text-slate-500 font-medium">Insentif Jarak Driver:</span>
+            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+              {formatDistanceLabel(trip.total_distance)}
+            </span>
+          </div>
+        )}
+
         <div className="mt-3 flex flex-wrap gap-1.5">
           {trip.company_burden?.map((pt) => (
             <span key={pt} className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold">{pt}</span>
@@ -97,6 +118,7 @@ export function TripDetail({ trip, onPrint }: { trip: BizTrip | null; onPrint?: 
             <Info label="KM" value={trip.obligo_vehicle_km ?? '-'} />
             <Info label="BBM (Fuel)" value={formatIDR(Number(trip.fuel_cost) || 0)} />
             <Info label="E-Toll" value={formatIDR(Number(trip.etoll_cost) || 0)} />
+            <Info label="Insentif Jarak Driver" value={formatDistanceLabel(trip.total_distance)} />
           </div>
           {trip.obligo_note && <p className="text-xs text-slate-500 mt-3">{trip.obligo_note}</p>}
         </Card>
