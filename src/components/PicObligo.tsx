@@ -21,9 +21,9 @@ export function PicObligo() {
   const [etollCost, setEtollCost] = useState(0);
   const [note, setNote] = useState('');
 
-  // Antrean khusus trip dengan status 'Pending PIC Obligo' dari seluruh PT (tanpa batasan pt_access)
+  // Antrean khusus trip dengan status 'Pending PIC Obligo Approval' dari seluruh PT (tanpa batasan pt_access)
   const queue = useMemo(() => {
-    return trips.filter((t) => t.status === 'Pending PIC Obligo');
+    return trips.filter((t) => t.status === 'Pending PIC Obligo Approval');
   }, [trips]);
 
   const startReview = (t: BizTrip) => {
@@ -60,7 +60,7 @@ export function PicObligo() {
         actor_name: profile?.name ?? '', 
         actor_role: 'PIC Obligo', 
         action: 'Vehicle assigned -> Pending Direksi', 
-        from_status: 'Pending PIC Obligo', 
+        from_status: 'Pending PIC Obligo Approval', 
         to_status: 'Pending Direksi Approval', 
         remarks: `${vehiclePlate} · BBM ${fuelCost} · Toll ${etollCost}` 
       });
