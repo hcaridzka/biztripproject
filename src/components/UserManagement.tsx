@@ -35,20 +35,38 @@ export function UserManagement() {
     setter(list.includes(pt) ? list.filter((p) => p !== pt) : [...list, pt]);
   };
 
-  const addUser = async () => {
-    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) { showToast('error', 'Nama, email, password wajib diisi'); return; }
-    try {
-      const { data: authData, error: authErr } = await supabase.auth.admin.createUser({ email: newUser.email, password: newUser.password, email_confirm: true });
-      if (authErr) { showToast('error', 'Gagal buat auth: ' + authErr.message); return; }
-      const uid = authData.user.id;
-      await supabase.from('profiles').update({ name: newUser.name, role: newUser.role, jabatan: newUser.jabatan, pt_access: newUser.pt_access, is_demo: false }).eq('id', uid);
-      showToast('success', 'User berhasil dibuat');
-      setShowAdd(false);
-      setNewUser({ name: '', email: '', password: '', role: 'Employee', jabatan: 'Staff', pt_access: [] });
-      loadUsers();
-    } catch (e: any) { showToast('error', 'Gagal: ' + e.message); }
-  };
+  const handleCreateUser = async (e: React.FormEvent) => {
+  e.preventDefault();
 
+  try {
+    // 1. Buat ID acak untuk user baru
+    const newUserId = crypto.randomUUID();
+
+    // 2. Insert data langsung ke tabel profiles
+    // (Trigger SQL Supabase akan otomatis membuat akun login-nya di Auth)
+    const { error } = await supabase.from('profiles').insert([
+      {
+        id: newUserId,
+        email: email,
+        name: nama,
+        password: password,
+        role: role,
+        jabatan: jabatan,
+        pt_unit: selectedPTs // Sesuaikan dengan nama state PT unit kamu
+      }
+    ]);
+
+    if (error) throw error;
+
+    alert('User berhasil ditambahkan!');
+    // Reset form / tutup modal setelah sukses
+    setNama('');
+    setEmail('');
+    setPassword('');
+  } catch (err: any) {
+    alert('Gagal membuat user: ' + err.message);
+  }
+};
   const updatePTAccess = async (uid: string, pt_access: string[]) => {
     const { error } = await supabase.from('profiles').update({ pt_access }).eq('id', uid);
     if (error) { showToast('error', 'Gagal: ' + error.message); return; }
