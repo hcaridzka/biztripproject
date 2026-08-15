@@ -50,7 +50,10 @@ export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: stri
       const b64 = await fileToBase64(file);
       updateReceipt(id, { fileBase64: b64, uploading: false });
       showToast('success', 'Bukti terunggah (Base64)');
-    } catch (e: any) { showToast('error', 'Gagal: ' + e.message); updateReceipt(id, { uploading: false }); }
+    } catch (e: any) { 
+      showToast('error', 'Gagal: ' + e.message); 
+      updateReceipt(id, { uploading: false }); 
+    }
   };
 
   const validation = useMemo(() => {
@@ -68,13 +71,26 @@ export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: stri
   const canSubmit = validation.length === 0 && workResult.trim().length > 0;
 
   const submit = async () => {
-    if (!selected || !canSubmit) { showToast('error', `Form belum lengkap: ${validation.length} field`); return; }
+    if (!selected || !canSubmit) { 
+      showToast('error', `Form belum lengkap: ${validation.length} field`); 
+      return; 
+    }
     try {
       for (const r of receipts) {
-        await supabase.from('settlement_receipts').insert({ trip_id: selected.id, category: r.category, description: r.description, amount: r.amount, file_name: r.fileBase64, hr_status: 'pending' });
+        const { error: receiptError } = await supabase.from('settlement_receipts').insert({ 
+          trip_id: selected.id, 
+          category: r.category, 
+          description: r.description, 
+          amount: r.amount, 
+          file_base64: r.fileBase64, 
+          hr_status: 'pending' 
+        });
+        if (receiptError) throw receiptError;
       }
+
       await updateTrip(selected.id, {
         work_result: workResult,
+        total_days: realDays,
         pending_task: pendingTask || null,
         next_project: nextProject || null,
         realization_total: totalActual,
@@ -82,20 +98,44 @@ export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: stri
         settlement_submitted_at: new Date().toISOString(),
         status: 'Pending HR Settlement Review',
       });
-      await supabase.from('trip_tracking').insert({ trip_id: selected.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Settlement submitted', from_status: 'Pending Settlement', to_status: 'Pending HR Settlement Review' });
+
+      await supabase.from('trip_tracking').insert({ 
+        trip_id: selected.id, 
+        actor_name: profile?.name ?? '', 
+        actor_role: 'Employee', 
+        action: 'Settlement submitted', 
+        from_status: 'Pending Settlement', 
+        to_status: 'Pending HR Settlement Review' 
+      });
+
       showToast('success', 'Laporan settlement berhasil disubmit');
       setSelected(null);
       refresh();
-    } catch (e: any) { showToast('error', 'Gagal: ' + e.message); }
+    } catch (e: any) { 
+      showToast('error', 'Gagal: ' + (e.message || 'Terjadi kesalahan sistem')); 
+    }
   };
 
   const ajukanBanding = async (t: BizTrip) => {
     const reason = window.prompt('Tulis alasan banding dan penjelasan tambahan:');
     if (!reason?.trim()) return;
-    await updateTrip(t.id, { banding_reason: reason, banding_at: new Date().toISOString(), status: 'Pending HR Settlement Review' });
-    await supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Banding diajukan', from_status: t.status, to_status: 'Pending HR Settlement Review', remarks: reason });
-    showToast('success', 'Banding diajukan ke HR');
-    refresh();
+    
+    try {
+      await updateTrip(t.id, { banding_reason: reason, banding_at: new Date().toISOString(), status: 'Pending HR Settlement Review' });
+      await supabase.from('trip_tracking').insert({ 
+        trip_id: t.id, 
+        actor_name: profile?.name ?? '', 
+        actor_role: 'Employee', 
+        action: 'Banding diajukan', 
+        from_status: t.status, 
+        to_status: 'Pending HR Settlement Review', 
+        remarks: reason 
+      });
+      showToast('success', 'Banding diajukan ke HR');
+      refresh();
+    } catch (e: any) {
+      showToast('error', 'Gagal mengajukan banding: ' + e.message);
+    }
   };
 
   return (
@@ -108,7 +148,6 @@ export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: stri
         </div>
       </div>
 
-      {/* Banding queue */}
       {bandingQueue.length > 0 && (
         <Card className="p-6 ring-amber-200">
           <h3 className="text-sm font-bold text-amber-700 mb-3 flex items-center gap-2"><RotateCcw className="w-4 h-4" /> Banding Settlement</h3>
