@@ -227,3 +227,18 @@ export interface BizTrip {
   banding_at: string | null;
   employee_remarks: string | null;
 }
+
+export interface AllowanceMatrix {
+  grade_key: string;
+  luar_kota: number;
+  kp1: number;
+  kp2: number;
+  kpo: number;
+  hotel: number;
+  petty_cash: number;
+  dk_25: number;
+  dk_50: number;
+  dk_100: number;
+  driver_incentive_gt200: number; // Tambah ini
+  driver_incentive_gt400: number; // Tambah ini
+}
