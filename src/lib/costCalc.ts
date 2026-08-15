@@ -1,10 +1,10 @@
-import type { Participant, ItineraryLeg, Jabatan, KPScheme, DKTier, TripCategory } from './types';
+import type { Participant, ItineraryLeg, Jabatan, KPScheme, DKTier, TripCategory, TotalDistanceOption } from './types';
 import { JABATAN_RANK, DK_DISTANCE_TIERS } from './constants';
 import { uid, daysBetween, formatIDR } from './utils';
 
-// ===== CORRECTED ALLOWANCE MATRIX =====
+// ===== DYNAMIC MATRIX TYPES & DEFAULTS =====
 
-interface GradeMatrix {
+export interface GradeMatrix {
   luarKota: number;
   kp1: number;
   kp2: number;
@@ -13,9 +13,12 @@ interface GradeMatrix {
   pettyCash: number;
 }
 
-type GradeKey = 'Direksi' | 'Head/TL' | 'Staff' | 'GM' | 'TAD';
+export type GradeKey = 'Direksi' | 'Head/TL' | 'Staff' | 'GM' | 'TAD';
 
-function gradeKey(j: Jabatan): GradeKey {
+export type DynamicMatrixMap = Record<GradeKey, GradeMatrix>;
+export type DynamicDKMatrixMap = Record<GradeKey, Record<DKTier, number>>;
+
+export function gradeKey(j: Jabatan): GradeKey {
   if (j === 'Direksi') return 'Direksi';
   if (j === 'General Manager') return 'GM';
   if (j === 'Head Department' || j === 'Team Leader') return 'Head/TL';
@@ -23,7 +26,8 @@ function gradeKey(j: Jabatan): GradeKey {
   return 'Staff';
 }
 
-const MATRIX: Record<GradeKey, GradeMatrix> = {
+// Fallback Default Matrix
+export const DEFAULT_MATRIX: DynamicMatrixMap = {
   'Direksi':  { luarKota: 200000, kp1: 100000, kp2: 125000, kpo: 50000, hotel: 500000, pettyCash: 100000 },
   'Head/TL':  { luarKota: 150000, kp1: 50000,  kp2: 90000,  kpo: 30000, hotel: 350000, pettyCash: 50000 },
   'Staff':    { luarKota: 100000, kp1: 30000,  kp2: 60000,  kpo: 30000, hotel: 250000, pettyCash: 50000 },
@@ -31,8 +35,7 @@ const MATRIX: Record<GradeKey, GradeMatrix> = {
   'TAD':      { luarKota: 100000, kp1: 100000, kp2: 100000, kpo: 100000, hotel: 0,      pettyCash: 35000 },
 };
 
-// CORRECTED DK MATRIX per latest spec
-const DK_MATRIX: Record<GradeKey, Record<DKTier, number>> = {
+export const DEFAULT_DK_MATRIX: DynamicDKMatrixMap = {
   'Direksi': { '25': 50000,  '50': 75000,  '100': 100000 },
   'Head/TL': { '25': 30000,  '50': 50000,  '100': 75000 },
   'Staff':   { '25': 15000,  '50': 25000,  '100': 50000 },
@@ -40,8 +43,8 @@ const DK_MATRIX: Record<GradeKey, Record<DKTier, number>> = {
   'TAD':     { '25': 100000, '50': 100000, '100': 100000 },
 };
 
-export function getGradeMatrix(j: Jabatan): GradeMatrix {
-  return MATRIX[gradeKey(j)];
+export function getGradeMatrix(j: Jabatan, matrix: DynamicMatrixMap = DEFAULT_MATRIX): GradeMatrix {
+  return matrix[gradeKey(j)] ?? DEFAULT_MATRIX[gradeKey(j)];
 }
 
 // Determine the scheme for a single leg
@@ -57,7 +60,13 @@ function legScheme(leg: ItineraryLeg, origin: string): 'DK' | 'KP1' | 'KP2' | 'K
 }
 
 // Per-leg rate for a participant
-function legRate(p: Participant, leg: ItineraryLeg, origin: string): { rate: number; scheme: string } {
+function legRate(
+  p: Participant, 
+  leg: ItineraryLeg, 
+  origin: string,
+  matrix: DynamicMatrixMap = DEFAULT_MATRIX,
+  dkMatrix: DynamicDKMatrixMap = DEFAULT_DK_MATRIX
+): { rate: number; scheme: string } {
   const gk = gradeKey(p.jabatan);
   const scheme = legScheme(leg, origin);
 
@@ -67,16 +76,16 @@ function legRate(p: Participant, leg: ItineraryLeg, origin: string): { rate: num
   if (scheme === 'DK') {
     let tier = leg.dkTier ?? '25';
     if (origin !== 'Head Office BSD' && tier === '25') tier = '50';
-    return { rate: DK_MATRIX[gk][tier], scheme: `DK ${tier}KM` };
+    const currentDK = dkMatrix[gk] ?? DEFAULT_DK_MATRIX[gk];
+    return { rate: currentDK[tier], scheme: `DK ${tier}KM` };
   }
-  const m = MATRIX[gk];
+  const m = matrix[gk] ?? DEFAULT_MATRIX[gk];
   if (scheme === 'KP1') return { rate: m.kp1, scheme: 'KP1' };
   if (scheme === 'KP2') return { rate: m.kp2, scheme: 'KP2' };
   if (scheme === 'KPO') return { rate: m.kpo, scheme: 'KPO' };
   return { rate: m.luarKota, scheme: 'LK' };
 }
 
-// Per-leg allowance breakdown for a participant
 export interface LegBreakdown {
   legIndex: number;
   destination: string;
@@ -89,10 +98,14 @@ export interface LegBreakdown {
 // ===== PER-LEG CALCULATION =====
 
 function perDiemForParticipant(
-  p: Participant, itinerary: ItineraryLeg[], origin: string,
+  p: Participant, 
+  itinerary: ItineraryLeg[], 
+  origin: string,
+  matrix: DynamicMatrixMap = DEFAULT_MATRIX,
+  dkMatrix: DynamicDKMatrixMap = DEFAULT_DK_MATRIX
 ): { perDay: number; total: number; hotel: number; driver: number; breakdown: string; legs: LegBreakdown[] } {
   const gk = gradeKey(p.jabatan);
-  const m = MATRIX[gk];
+  const m = matrix[gk] ?? DEFAULT_MATRIX[gk];
   const legs: LegBreakdown[] = [];
   let total = 0;
   let isLuarKota = false;
@@ -100,7 +113,7 @@ function perDiemForParticipant(
   for (let i = 0; i < itinerary.length; i++) {
     const leg = itinerary[i];
     const legDays = daysBetween(leg.start_date, leg.end_date);
-    const { rate, scheme } = legRate(p, leg, origin);
+    const { rate, scheme } = legRate(p, leg, origin, matrix, dkMatrix);
     const amount = rate * legDays;
     total += amount;
     if (scheme !== 'DK') isLuarKota = true;
@@ -124,7 +137,9 @@ function perDiemForParticipant(
 // ===== PETTY CASH (return-to-origin logic) =====
 
 export function computePettyCash(
-  participants: Participant[], itinerary: ItineraryLeg[],
+  participants: Participant[], 
+  itinerary: ItineraryLeg[],
+  matrix: DynamicMatrixMap = DEFAULT_MATRIX
 ): { total: number; holder: string | null; perPerson: number; trips: number; perPersonBreakdown: { name: string; jabatan: Jabatan; amount: number }[] } {
   const internalParticipants = participants.filter((p) => (p.category ?? 'Internal') !== 'Eksternal');
   const hasLuarKota = itinerary.some((l) => legScheme(l, '') !== 'DK');
@@ -139,10 +154,10 @@ export function computePettyCash(
   const trips = itinerary.length + 1;
 
   const holder = [...internalParticipants].sort((a, b) => JABATAN_RANK[b.jabatan] - JABATAN_RANK[a.jabatan])[0];
-  const holderMatrix = getGradeMatrix(holder.jabatan);
+  const holderMatrix = getGradeMatrix(holder.jabatan, matrix);
 
   const perPersonBreakdown = internalParticipants.map((p) => {
-    const m = getGradeMatrix(p.jabatan);
+    const m = getGradeMatrix(p.jabatan, matrix);
     return { name: p.name || '(Belum diisi)', jabatan: p.jabatan, amount: m.pettyCash * trips };
   });
 
@@ -187,18 +202,43 @@ export function computeCost(params: {
   tripCategory: TripCategory;
   kpScheme: KPScheme;
   needsDriver: boolean;
+  totalDistance?: TotalDistanceOption; // Opsi Jarak Total (>200km / >400km)
   fuelCost?: number;
   etollCost?: number;
   hotelByHR?: boolean;
+  matrix?: DynamicMatrixMap;
+  dkMatrix?: DynamicDKMatrixMap;
 }): CostBreakdown {
-  const { participants, itinerary, origin, fuelCost = 0, etollCost = 0, hotelByHR = true } = params;
-  const petty = computePettyCash(participants, itinerary);
+  const { 
+    participants, itinerary, origin, 
+    needsDriver, totalDistance = 'none',
+    fuelCost = 0, etollCost = 0, hotelByHR = true,
+    matrix = DEFAULT_MATRIX, dkMatrix = DEFAULT_DK_MATRIX 
+  } = params;
+
+  // Hitung insentif tambahan jarak untuk Driver (flat per trip)
+  let driverIncentive = 0;
+  if (totalDistance === 'gt200') {
+    driverIncentive = 50000;
+  } else if (totalDistance === 'gt400') {
+    driverIncentive = 100000;
+  }
+
+  const petty = computePettyCash(participants, itinerary, matrix);
 
   const internalParticipants = participants.filter((p) => (p.category ?? 'Internal') !== 'Eksternal');
   const perParticipant: PerParticipant[] = internalParticipants.map((p) => {
-    const pp = perDiemForParticipant(p, itinerary, origin);
-    const hotel = hotelByHR ? 0 : pp.hotel; // checkbox checked = HR books = 0 to employee
+    const pp = perDiemForParticipant(p, itinerary, origin, matrix, dkMatrix);
+    const hotel = hotelByHR ? 0 : pp.hotel;
     const pettyAmount = petty.perPersonBreakdown.find((pb) => pb.name === (p.name || '(Belum diisi)'))?.amount ?? 0;
+    
+    // Tambahkan insentif jika peserta ber-Jabatan Driver
+    const isDriver = p.jabatan === 'Driver';
+    const driverBonus = isDriver ? driverIncentive : 0;
+    const breakdownText = isDriver && driverBonus > 0 
+      ? `${pp.breakdown} + Insentif Jarak (${formatIDR(driverBonus)})` 
+      : pp.breakdown;
+
     return {
       name: p.name || '(Belum diisi)',
       jabatan: p.jabatan,
@@ -206,16 +246,21 @@ export function computeCost(params: {
       days: itinerary.reduce((s, l) => s + daysBetween(l.start_date, l.end_date), 0),
       total: pp.total,
       hotel,
-      driver: pp.driver,
+      driver: pp.driver + driverBonus,
       pettyCash: pettyAmount,
-      breakdown: pp.breakdown,
+      breakdown: breakdownText,
       legs: pp.legs,
     };
   });
 
   const perDiemTotal = perParticipant.reduce((s, p) => s + p.total, 0);
   const hotelTotal = perParticipant.reduce((s, p) => s + p.hotel, 0);
-  const driverTotal = perParticipant.reduce((s, p) => s + p.driver, 0);
+  
+  // Total Driver = akumulasi dari peserta Driver + insentif driver luar jika butuh driver tapi tak ada di daftar peserta
+  const driverInParticipants = participants.some((p) => p.jabatan === 'Driver');
+  const externalDriverIncentive = (needsDriver && !driverInParticipants) ? driverIncentive : 0;
+  const driverTotal = perParticipant.reduce((s, p) => s + p.driver, 0) + externalDriverIncentive;
+  
   const pettyCashTotal = petty.total;
   const grandTotal = perDiemTotal + hotelTotal + driverTotal + pettyCashTotal + fuelCost + etollCost;
 
@@ -233,7 +278,7 @@ export function autoKPSchemeForLeg(destination: string, current: KPScheme): KPSc
   if (!destination) return current;
   if (destination.includes('SITE')) return 'KP2';
   if (destination.includes('Branch Office')) return 'KP1';
-  if (destination === 'Luar Kota') return 'KPO'; // placeholder, LK reguler uses trip-level
+  if (destination === 'Luar Kota') return 'KPO';
   return current;
 }
 
