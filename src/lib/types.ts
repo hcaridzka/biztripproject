@@ -16,9 +16,21 @@ export interface Participant {
   id: string;
   name: string;
   jabatan: Jabatan;
+  grade?: string;
   category?: ParticipantCategory;
   keterangan?: string;
   pt_unit?: string;
+}
+
+export interface PerParticipant {
+  name: string;
+  grade: string;
+  jabatan?: Jabatan;
+  pt_unit?: string;
+  allowanceTotal?: number;
+  hotelTotal?: number;
+  pettyCashTotal?: number;
+  total?: number;
 }
 
 export interface ItineraryLeg {
@@ -41,6 +53,8 @@ export interface Profile {
   name: string;
   nip: string | null;
   jabatan: Jabatan;
+  grade?: string;
+  pt_unit?: string;
   pt_access: string[];
   is_super_admin: boolean;
   is_demo: boolean;
