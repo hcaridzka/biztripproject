@@ -24,9 +24,6 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
   const [applicantPt, setApplicantPt] = useState<string>(profile?.pt_unit ?? '');
   const [origin, setOrigin] = useState('Head Office BSD');
   const [originCustom, setOriginCustom] = useState('');
-  
-  const [depTime, setDepTime] = useState('08:00');
-  const [retTime, setRetTime] = useState('17:00');
 
   const [purpose, setPurpose] = useState('');
   const [needsVehicle, setNeedsVehicle] = useState<TransportChoice>('Kendaraan Dinas');
@@ -41,16 +38,21 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
   const [pettyFile, setPettyFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const { depDate, retDate, days } = useMemo(() => {
-    if (itinerary.length === 0) return { depDate: '', retDate: '', days: 0 };
+  // Perhitungan tanggal, jam berangkat & pulang otomatis dari Itinerary
+  const { depDate, retDate, depTime, retTime, days } = useMemo(() => {
+    if (itinerary.length === 0) return { depDate: '', retDate: '', depTime: '08:00', retTime: '17:00', days: 0 };
+    
     const sortedLegs = [...itinerary].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
     const firstLeg = sortedLegs[0];
     const lastLeg = [...sortedLegs].sort((a, b) => new Date(a.end_date).getTime() - new Date(b.end_date).getTime())[sortedLegs.length - 1];
     
     const dDate = firstLeg?.start_date ?? '';
     const rDate = lastLeg?.end_date ?? '';
+    const dTime = firstLeg?.start_time || '08:00';
+    const rTime = lastLeg?.end_time || '17:00';
+
     const totalDays = dDate && rDate ? daysBetween(dDate, rDate) : 0;
-    return { depDate: dDate, retDate: rDate, days: totalDays };
+    return { depDate: dDate, retDate: rDate, depTime: dTime, retTime: rTime, days: totalDays };
   }, [itinerary]);
 
   const kpScheme = useMemo(() => defaultKPScheme(itinerary), [itinerary]);
@@ -64,7 +66,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
     pt_unit: applicantPt,
   }), [profile, jabatan, applicantPt]);
 
-  // Menggabungkan Pemohon Utama dan Partisipan Tambahan dengan proteksi agar pemohon tidak tertimpa/hilang
+  // Menggabungkan Pemohon Utama dan Partisipan Tambahan
   const allParticipants = useMemo(() => {
     const othersFiltered = participants.filter((p) => p.id !== 'main-applicant');
     return [mainApplicant, ...othersFiltered];
@@ -306,20 +308,11 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
             </Select>
           </Field>
         </div>
-        
-        <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Waktu Berangkat (Jam)" required>
-            <Input type="time" value={depTime} onChange={(e) => setDepTime(e.target.value)} />
-          </Field>
-          <Field label="Waktu Pulang (Jam)" required>
-            <Input type="time" value={retTime} onChange={(e) => setRetTime(e.target.value)} />
-          </Field>
-        </div>
 
         {depDate && retDate && (
           <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl flex items-center justify-between">
             <span className="flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-brand-600" /> Otomatis dari Itinerary: <strong>{depDate}</strong> s.d <strong>{retDate}</strong>
+              <Calendar className="w-4 h-4 text-brand-600" /> Otomatis dari Itinerary: <strong>{depDate} ({depTime})</strong> s.d <strong>{retDate} ({retTime})</strong>
             </span>
             <span className="font-bold text-brand-600">Total Durasi: {days} hari</span>
           </div>
@@ -461,7 +454,9 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
           </div>
         )}
       </Card>
-
+    </div>
+  );
+}
       {/* Pegawai Pemohon auto-included banner */}
       <Card className="p-4 ring-brand-200 bg-brand-50/30">
         <div className="flex items-center gap-3">
