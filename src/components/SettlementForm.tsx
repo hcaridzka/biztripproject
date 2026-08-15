@@ -8,15 +8,6 @@ import { uid, formatDate, daysBetween } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import type { BizTrip } from '../lib/types';
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: string) => void }) {
   const { profile } = useAuth();
   const { trips, updateTrip, showToast, refresh } = useApp();
@@ -25,7 +16,7 @@ export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: stri
   const [realDays, setRealDays] = useState(1);
   const [pendingTask, setPendingTask] = useState('');
   const [nextProject, setNextProject] = useState('');
-  const [receipts, setReceipts] = useState<{ id: string; category: string; description: string; amount: number; fileBase64: string | null; uploading: boolean }[]>([]);
+  const [receipts, setReceipts] = useState<{ id: string; category: string; description: string; amount: number; fileUrl: string | null; uploading: boolean }[]>([]);
 
   const queue = useMemo(() => trips.filter((t) => t.user_id === profile?.id && (t.status === 'On Trip' || t.status === 'Pending Settlement')), [trips, profile]);
   const bandingQueue = useMemo(() => trips.filter((t) => t.user_id === profile?.id && (t.status === 'Rejected' && t.settlement_result && t.settlement_result !== 'Approved')), [trips, profile]);
@@ -39,19 +30,31 @@ export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: stri
     setReceipts([]);
   };
 
-  const addReceipt = () => setReceipts((r) => [...r, { id: uid(), category: RECEIPT_CATEGORIES[0], description: '', amount: 0, fileBase64: null, uploading: false }]);
+  const addReceipt = () => setReceipts((r) => [...r, { id: uid(), category: RECEIPT_CATEGORIES[0], description: '', amount: 0, fileUrl: null, uploading: false }]);
   const updateReceipt = (id: string, patch: any) => setReceipts((r) => r.map((x) => x.id === id ? { ...x, ...patch } : x));
   const removeReceipt = (id: string) => setReceipts((r) => r.filter((x) => x.id !== id));
 
+  // Fungsi Upload ke Supabase Storage (Bucket: receipts)
   const uploadReceiptImage = async (id: string, file: File | null) => {
     if (!file) return;
     updateReceipt(id, { uploading: true });
     try {
-      const b64 = await fileToBase64(file);
-      updateReceipt(id, { fileBase64: b64, uploading: false });
-      showToast('success', 'Bukti terunggah (Base64)');
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${selected?.id || 'settlement'}_${Date.now()}_${uid()}.${fileExt}`;
+      const filePath = `receipts/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('receipts')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('receipts').getPublicUrl(filePath);
+
+      updateReceipt(id, { fileUrl: data.publicUrl, uploading: false });
+      showToast('success', 'Bukti terunggah ke Storage');
     } catch (e: any) { 
-      showToast('error', 'Gagal: ' + e.message); 
+      showToast('error', 'Gagal upload: ' + e.message); 
       updateReceipt(id, { uploading: false }); 
     }
   };
@@ -61,7 +64,7 @@ export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: stri
     if (!workResult.trim()) errs.push('Laporan Hasil Pekerjaan wajib diisi');
     if (realDays < 1) errs.push('Total hari riil wajib diisi');
     for (let i = 0; i < receipts.length; i++) {
-      if (receipts[i].amount > 0 && !receipts[i].fileBase64) errs.push(`Receipt ${i + 1}: nominal diisi tapi bukti gambar kosong`);
+      if (receipts[i].amount > 0 && !receipts[i].fileUrl) errs.push(`Receipt ${i + 1}: nominal diisi tapi bukti gambar kosong`);
       if (!receipts[i].category) errs.push(`Receipt ${i + 1}: kategori wajib`);
     }
     return errs;
@@ -82,7 +85,7 @@ export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: stri
           category: r.category, 
           description: r.description, 
           amount: r.amount, 
-          file_base64: r.fileBase64, 
+          file_base64: r.fileUrl, // Menyimpan URL publik file storage
           hr_status: 'pending' 
         });
         if (receiptError) throw receiptError;
@@ -229,8 +232,8 @@ export function SettlementForm({ setSelectedTrip }: { setSelectedTrip: (id: stri
                       <Select value={r.category} onChange={(e) => updateReceipt(r.id, { category: e.target.value })}>{RECEIPT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
                       <Input value={r.description} onChange={(e) => updateReceipt(r.id, { description: e.target.value })} placeholder="Deskripsi" />
                       <Input type="number" value={r.amount} onChange={(e) => updateReceipt(r.id, { amount: parseFloat(e.target.value) || 0 })} placeholder="Nominal (Rp)" />
-                      <div className={`rounded-xl px-3 py-2 text-xs font-semibold text-center ${r.fileBase64 ? 'bg-emerald-50 text-emerald-600' : r.amount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-400'}`}>
-                        {r.uploading ? 'Uploading...' : r.fileBase64 ? 'Bukti terunggah' : 'Belum ada bukti'}
+                      <div className={`rounded-xl px-3 py-2 text-xs font-semibold text-center ${r.fileUrl ? 'bg-emerald-50 text-emerald-600' : r.amount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-400'}`}>
+                        {r.uploading ? 'Uploading...' : r.fileUrl ? 'Bukti terunggah' : 'Belum ada bukti'}
                       </div>
                     </div>
                     <input type="file" accept="image/*" onChange={(e) => uploadReceiptImage(r.id, e.target.files?.[0] ?? null)}
