@@ -46,7 +46,7 @@ export function PdfPrint({ tripId, mode, onClose }: { tripId: string | null; mod
           </div>
           <div className="mt-4 text-xs text-slate-400">Pegawai Pemohon: <strong>{trip.requester_name}</strong></div>
 
-          {/* MODE 1: ADVANCE & SPD (Formulir setelah Approved HR/Manager) */}
+          {/* MODE 1: ADVANCE & SPD */}
           {mode === 'advance' ? (
             <>
               <div className="mt-6 text-center">
@@ -115,6 +115,13 @@ export function PdfPrint({ tripId, mode, onClose }: { tripId: string | null; mod
                     <td className="py-2 px-3 border border-slate-200">E-Toll</td>
                     <td className="py-2 px-3 text-right border border-slate-200">{formatIDR(Number(trip.etoll_cost) || 0)}</td>
                   </tr>
+                  {/* BARIS BARU: Insentif Jarak Driver */}
+                  {Number(trip.driver_incentive_cost) > 0 && (
+                    <tr>
+                      <td className="py-2 px-3 border border-slate-200">Insentif Jarak Driver</td>
+                      <td className="py-2 px-3 text-right border border-slate-200">{formatIDR(Number(trip.driver_incentive_cost) || 0)}</td>
+                    </tr>
+                  )}
                   {extras.map((e) => (
                     <tr key={e.id}>
                       <td className="py-2 px-3 border border-slate-200">{e.name} ({e.pt_burden})</td>
@@ -136,7 +143,7 @@ export function PdfPrint({ tripId, mode, onClose }: { tripId: string | null; mod
               </div>
             </>
           ) : (
-            /* MODE 2: SETTLEMENT REPORT (Formulir laporan setelah selesai perjalanan) */
+            /* MODE 2: SETTLEMENT REPORT */
             <>
               <div className="mt-6 text-center">
                 <h1 className="text-xl font-bold text-slate-900">LAPORAN HASIL & SETTLEMENT SPD</h1>
