@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Users, Plus, Trash2, Shield, Building2 } from 'lucide-react';
+import { Users, Plus, Shield, Building2, KeyRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
-import { Card, Button, Input, Select, Field, EmptyState } from './ui-shared';
+import { Card, Button, Input, Select, Field } from './ui-shared';
 import { PT_OPTIONS, JABATAN_LEVELS, ALL_ROLES } from '../lib/constants';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -14,7 +14,13 @@ export function UserManagement() {
   const [users, setUsers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  
+  // State for Add User
   const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'Employee' as Role, jabatan: 'Staff' as Jabatan, pt_access: [] as string[] });
+
+  // State for Change/Reset Password Modal/Inline
+  const [targetUserId, setTargetUserId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
 
   const loadUsers = async () => {
     const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: true });
@@ -52,9 +58,29 @@ export function UserManagement() {
   };
 
   const updateRole = async (uid: string, role: Role) => {
-    await supabase.from('profiles').update({ role }).eq('id', uid);
+    const { error } = await supabase.from('profiles').update({ role }).eq('id', uid);
+    if (error) { showToast('error', 'Gagal: ' + error.message); return; }
     setUsers((u) => u.map((x) => x.id === uid ? { ...x, role } : x));
     showToast('success', 'Role diperbarui');
+  };
+
+  const handleResetPassword = async (uid: string) => {
+    if (!newPassword || newPassword.length < 6) {
+      showToast('error', 'Password baru minimal 6 karakter');
+      return;
+    }
+    try {
+      const { error } = await supabase.auth.admin.updateUserById(uid, { password: newPassword });
+      if (error) {
+        showToast('error', 'Gagal merubah password: ' + error.message);
+        return;
+      }
+      showToast('success', 'Password berhasil direset');
+      setTargetUserId(null);
+      setNewPassword('');
+    } catch (e: any) {
+      showToast('error', 'Gagal: ' + e.message);
+    }
   };
 
   return (
@@ -63,7 +89,7 @@ export function UserManagement() {
         <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600"><Users className="w-5 h-5" /></div>
         <div className="flex-1">
           <h2 className="text-xl font-bold text-slate-900">User Management</h2>
-          <p className="text-sm text-slate-500">HR Manager · Kelola user & akses Multi-Unit PT</p>
+          <p className="text-sm text-slate-500">HR Manager · Kelola user, akses Multi-Unit PT & Reset Password</p>
         </div>
         <Button icon={<Plus className="w-4 h-4" />} onClick={() => setShowAdd(true)}>Add User</Button>
       </div>
@@ -80,10 +106,36 @@ export function UserManagement() {
                     <div className="text-xs text-slate-400">{u.email} · {u.jabatan}</div>
                   </div>
                 </div>
-                <Select value={u.role} onChange={(e) => updateRole(u.id, e.target.value as Role)} className="w-36">
-                  {ALL_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select value={u.role} onChange={(e) => updateRole(u.id, e.target.value as Role)} className="w-36">
+                    {ALL_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </Select>
+                  <Button 
+                    variant="secondary" 
+                    size="sm" 
+                    icon={<KeyRound className="w-3.5 h-3.5 text-slate-600" />} 
+                    onClick={() => { setTargetUserId(targetUserId === u.id ? null : u.id); setNewPassword(''); }}
+                  >
+                    {targetUserId === u.id ? 'Tutup' : 'Reset Password'}
+                  </Button>
+                </div>
               </div>
+
+              {/* Form Reset Password Inline */}
+              {targetUserId === u.id && (
+                <div className="mt-4 p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 flex items-center gap-3 animate-slide-up">
+                  <Input 
+                    type="password" 
+                    placeholder="Masukkan password baru (min. 6 karakter)" 
+                    value={newPassword} 
+                    onChange={(e) => setNewPassword(e.target.value)} 
+                    className="flex-1 text-xs"
+                  />
+                  <Button size="sm" onClick={() => handleResetPassword(u.id)}>Simpan Password</Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setTargetUserId(null); setNewPassword(''); }}>Batal</Button>
+                </div>
+              )}
+
               <div className="mt-3">
                 <div className="text-xs font-semibold text-slate-500 mb-1.5 flex items-center gap-1.5"><Building2 className="w-3 h-3" /> Akses Multi-Unit PT</div>
                 <div className="flex flex-wrap gap-1.5">
@@ -129,5 +181,3 @@ export function UserManagement() {
     </div>
   );
 }
-
-void Trash2; void EmptyState;
