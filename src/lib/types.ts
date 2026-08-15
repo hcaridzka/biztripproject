@@ -1,10 +1,12 @@
 export type Role = 'Employee' | 'Manager' | 'PIC Obligo' | 'Direksi' | 'HR Manager';
 
-export type Jabatan = 'Staff' | 'Team Leader' | 'Head Department' | 'General Manager' | 'Direksi' | 'TAD';
+export type Jabatan = 'Staff' | 'Team Leader' | 'Head Department' | 'General Manager' | 'Direksi' | 'TAD' | 'Driver';
 
 export type KPScheme = 'KP1' | 'KP2' | 'KPO';
 
 export type DKTier = '25' | '50' | '100';
+
+export type TotalDistanceOption = 'none' | 'gt200' | 'gt400';
 
 export type TransportChoice = 'Kendaraan Dinas' | 'Transportasi Umum' | 'Kendaraan Pribadi';
 
@@ -24,13 +26,20 @@ export interface Participant {
 
 export interface PerParticipant {
   name: string;
-  grade: string;
+  grade?: string;
   jabatan?: Jabatan;
   pt_unit?: string;
+  perDay?: number;
+  days?: number;
   allowanceTotal?: number;
   hotelTotal?: number;
+  hotel?: number;
+  driver?: number;
   pettyCashTotal?: number;
+  pettyCash?: number;
   total?: number;
+  breakdown?: string;
+  legs?: any[];
 }
 
 export interface ItineraryLeg {
@@ -157,6 +166,7 @@ export interface BizTrip {
   needs_vehicle: boolean;
   vehicle_type_choice: string | null;
   needs_driver: boolean;
+  total_distance?: TotalDistanceOption; // Field baru untuk opsi jarak total
   itinerary: ItineraryLeg[];
   participants: Participant[];
   petty_cash_requested: boolean;
