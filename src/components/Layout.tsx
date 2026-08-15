@@ -14,17 +14,17 @@ export type ViewKey = 'dashboard' | 'new-request' | 'my-trips' | 'approval' | 'p
 interface NavItem { key: ViewKey; label: string; icon: ReactNode; roles: Role[]; }
 
 const NAV: NavItem[] = [
-  { key: 'dashboard', label: 'Dashboard', icon: <BarChart3 className="w-4.5 h-4.5" />, roles: ['Employee', 'Manager', 'PIC Obligo', 'Direksi', 'HR Manager'] },
-  { key: 'new-request', label: 'New Trip Request', icon: <FilePlus className="w-4.5 h-4.5" />, roles: ['Employee'] },
-  { key: 'my-trips', label: 'My Trips', icon: <MapPin className="w-4.5 h-4.5" />, roles: ['Employee'] },
-  { key: 'approval', label: 'Approval Queue', icon: <CheckSquare className="w-4.5 h-4.5" />, roles: ['Manager', 'Direksi', 'HR Manager'] },
-  { key: 'pic-obligo', label: 'Vehicle & Driver', icon: <Truck className="w-4.5 h-4.5" />, roles: ['PIC Obligo'] },
-  { key: 'cost-review', label: 'Cost & Advance Review', icon: <ClipboardList className="w-4.5 h-4.5" />, roles: ['HR Manager'] },
-  { key: 'settlement', label: 'Settlement Report', icon: <ClipboardList className="w-4.5 h-4.5" />, roles: ['Employee'] },
-  { key: 'settlement-review', label: 'Settlement Review', icon: <ClipboardList className="w-4.5 h-4.5" />, roles: ['HR Manager'] },
-  { key: 'summary', label: 'Monthly Summary', icon: <BarChart3 className="w-4.5 h-4.5" />, roles: ['Manager', 'Direksi', 'HR Manager'] },
-  { key: 'user-management', label: 'User Management', icon: <Users className="w-4.5 h-4.5" />, roles: ['HR Manager'] },
-  { key: 'vehicles', label: 'Fleet Management', icon: <Truck className="w-4.5 h-4.5" />, roles: ['PIC Obligo', 'HR Manager'] },
+  { key: 'dashboard', label: 'Dashboard', icon: <BarChart3 className="w-4.5 h-4.5"/>, roles: ['Employee', 'Manager', 'PIC Obligo', 'Direksi', 'HR Manager'] },
+  { key: 'new-request', label: 'New Trip Request', icon: <FilePlus className="w-4.5 h-4.5"/>, roles: ['Employee', 'HR Manager'] },
+  { key: 'my-trips', label: 'My Trips', icon: <MapPin className="w-4.5 h-4.5"/>, roles: ['Employee', 'HR Manager'] },
+  { key: 'approval', label: 'Approval Queue', icon: <CheckSquare className="w-4.5 h-4.5"/>, roles: ['Manager', 'Direksi', 'HR Manager'] },
+  { key: 'pic-obligo', label: 'Vehicle & Driver', icon: <Truck className="w-4.5 h-4.5"/>, roles: ['PIC Obligo', 'HR Manager'] },
+  { key: 'cost-review', label: 'Cost & Advance Review', icon: <ClipboardList className="w-4.5 h-4.5"/>, roles: ['HR Manager'] },
+  { key: 'settlement', label: 'Settlement Report', icon: <ClipboardList className="w-4.5 h-4.5"/>, roles: ['Employee', 'HR Manager'] },
+  { key: 'settlement-review', label: 'Settlement Review', icon: <ClipboardList className="w-4.5 h-4.5"/>, roles: ['HR Manager'] },
+  { key: 'summary', label: 'Monthly Summary', icon: <BarChart3 className="w-4.5 h-4.5"/>, roles: ['Manager', 'Direksi', 'HR Manager'] },
+  { key: 'user-management', label: 'User Management', icon: <Users className="w-4.5 h-4.5"/>, roles: ['HR Manager'] },
+  { key: 'vehicles', label: 'Fleet Management', icon: <Truck className="w-4.5 h-4.5"/>, roles: ['PIC Obligo', 'HR Manager'] },
 ];
 
 export function Layout({ view, setView, children }: { view: ViewKey; setView: (v: ViewKey) => void; children: ReactNode }) {
@@ -34,7 +34,11 @@ export function Layout({ view, setView, children }: { view: ViewKey; setView: (v
   const [roleOpen, setRoleOpen] = useState(false);
 
   if (!profile) return null;
-  const items = NAV.filter((n) => n.roles.includes(profile.role));
+
+  // HR Manager memiliki akses ke seluruh menu, sedangkan role lain sesuai hak akses di NAV
+  const items = profile.role === 'HR Manager' 
+    ? NAV 
+    : NAV.filter((n) => n.roles.includes(profile.role));
 
   const handleSignOut = async () => {
     await signOut();
@@ -56,7 +60,7 @@ export function Layout({ view, setView, children }: { view: ViewKey; setView: (v
         <div className="px-5 py-5 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center text-white shadow-sm ring-1 ring-brand-700/20">
-              <Building2 className="w-5 h-5" strokeWidth={2} />
+              <Building2 className="w-5 h-5" strokeWidth={2}/>
             </div>
             <div>
               <div className="text-sm font-bold text-slate-900 leading-tight">Aridzka Group</div>
@@ -87,7 +91,7 @@ export function Layout({ view, setView, children }: { view: ViewKey; setView: (v
             </div>
           </div>
           <button onClick={handleSignOut} className="mt-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition">
-            <LogOut className="w-4 h-4" /> Sign Out
+            <LogOut className="w-4 h-4"/> Sign Out
           </button>
         </div>
       </aside>
@@ -98,29 +102,31 @@ export function Layout({ view, setView, children }: { view: ViewKey; setView: (v
       <div className="flex-1 flex flex-col min-w-0">
         <header className="bg-white border-b border-slate-200 px-4 lg:px-8 py-3.5 flex items-center justify-between sticky top-0 z-20">
           <button onClick={() => setMenuOpen(true)} className="lg:hidden text-slate-500">
-            <ChevronDown className="w-5 h-5 rotate-90" />
+            <ChevronDown className="w-5 h-5 rotate-90"/>
           </button>
           <h1 className="text-base font-bold text-slate-900 capitalize">
             {NAV.find((n) => n.key === view)?.label ?? 'Dashboard'}
           </h1>
           <div className="flex items-center gap-3 text-xs text-slate-500">
             <span className="hidden sm:inline">{profile.email}</span>
-            <div className="relative">
-              <button onClick={() => setRoleOpen((o) => !o)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl ring-1 ring-slate-200 hover:bg-slate-50 transition text-slate-600 font-semibold">
-                <RefreshCw className="w-3.5 h-3.5" /> Switch Role
-                <ChevronDown className={cn('w-3 h-3 transition', roleOpen && 'rotate-180')} />
-              </button>
-              {roleOpen && (
-                <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-lg ring-1 ring-slate-200 py-1 z-50">
-                  {DEMO_ACCOUNTS.map((a) => (
-                    <button key={a.email} onClick={() => switchRole(a.email, a.label)} disabled={a.email === profile.email}
-                      className={cn('w-full text-left px-3 py-2 text-xs hover:bg-brand-50 transition', a.email === profile.email ? 'text-slate-300 font-semibold' : 'text-slate-700')}>
-                      {a.label}{a.email === profile.email ? ' \u2713' : ''}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {profile.role === 'HR Manager' && (
+              <div className="relative">
+                <button onClick={() => setRoleOpen((o) => !o)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl ring-1 ring-slate-200 hover:bg-slate-50 transition text-slate-600 font-semibold">
+                  <RefreshCw className="w-3.5 h-3.5"/> Switch Role
+                  <ChevronDown className={cn('w-3 h-3 transition', roleOpen && 'rotate-180')}/>
+                </button>
+                {roleOpen && (
+                  <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-lg ring-1 ring-slate-200 py-1 z-50">
+                    {DEMO_ACCOUNTS.map((a) => (
+                      <button key={a.email} onClick={() => switchRole(a.email, a.label)} disabled={a.email === profile.email}
+                        className={cn('w-full text-left px-3 py-2 text-xs hover:bg-brand-50 transition', a.email === profile.email ? 'text-slate-300 font-semibold' : 'text-slate-700')}>
+                        {a.label}{a.email === profile.email ? ' \u2713' : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </header>
         <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
