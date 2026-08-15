@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Plus, Shield, Building2, KeyRound } from 'lucide-react';
+import { Users, Plus, Shield, Building2, KeyRound, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Field } from './ui-shared';
@@ -15,10 +15,17 @@ export function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   
-  // State for Add User
-  const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'Employee' as Role, jabatan: 'Staff' as Jabatan, pt_access: [] as string[] });
+  // State untuk Add User
+  const [newUser, setNewUser] = useState({ 
+    name: '', 
+    email: '', 
+    password: '', 
+    role: 'Employee' as Role, 
+    jabatan: 'Staff' as Jabatan, 
+    pt_access: [] as string[] 
+  });
 
-  // State for Change/Reset Password Modal/Inline
+  // State untuk Reset Password Modal/Inline
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
@@ -35,38 +42,66 @@ export function UserManagement() {
     setter(list.includes(pt) ? list.filter((p) => p !== pt) : [...list, pt]);
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
-  e.preventDefault();
+  const handleCreateUser = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
+      showToast('error', 'Nama, email, dan password wajib diisi');
+      return;
+    }
 
-  try {
-    // 1. Buat ID acak untuk user baru
-    const newUserId = crypto.randomUUID();
+    try {
+      const newUserId = crypto.randomUUID();
 
-    // 2. Insert data langsung ke tabel profiles
-    // (Trigger SQL Supabase akan otomatis membuat akun login-nya di Auth)
-    const { error } = await supabase.from('profiles').insert([
-      {
-        id: newUserId,
-        email: email,
-        name: nama,
-        password: password,
-        role: role,
-        jabatan: jabatan,
-        pt_unit: selectedPTs // Sesuaikan dengan nama state PT unit kamu
+      const { error } = await supabase.from('profiles').insert([
+        {
+          id: newUserId,
+          email: newUser.email,
+          name: newUser.name,
+          password: newUser.password,
+          role: newUser.role,
+          jabatan: newUser.jabatan,
+          pt_access: newUser.pt_access
+        }
+      ]);
+
+      if (error) throw error;
+
+      showToast('success', 'User berhasil ditambahkan!');
+      setShowAdd(false);
+      setNewUser({ name: '', email: '', password: '', role: 'Employee', jabatan: 'Staff', pt_access: [] });
+      loadUsers();
+    } catch (err: any) {
+      showToast('error', 'Gagal membuat user: ' + err.message);
+    }
+  };
+
+  const deleteUser = async (uid: string, userName: string) => {
+    if (profile?.id === uid) {
+      showToast('error', 'Anda tidak bisa menghapus akun Anda sendiri');
+      return;
+    }
+
+    if (!confirm(`Apakah Anda yakin ingin menghapus user "${userName}"?`)) return;
+
+    try {
+      // 1. Hapus dari Supabase Auth Admin (jika memakai Auth Admin API)
+      const { error: authErr } = await supabase.auth.admin.deleteUser(uid);
+      if (authErr && !authErr.message.includes('not found')) {
+        // Tetap lanjut hapus profile jika auth user tidak ditemukan
+        console.warn('Auth delete info:', authErr.message);
       }
-    ]);
 
-    if (error) throw error;
+      // 2. Hapus data dari tabel profiles
+      const { error: profileErr } = await supabase.from('profiles').delete().eq('id', uid);
+      if (profileErr) throw profileErr;
 
-    alert('User berhasil ditambahkan!');
-    // Reset form / tutup modal setelah sukses
-    setNama('');
-    setEmail('');
-    setPassword('');
-  } catch (err: any) {
-    alert('Gagal membuat user: ' + err.message);
-  }
-};
+      setUsers((prev) => prev.filter((u) => u.id !== uid));
+      showToast('success', `User ${userName} berhasil dihapus`);
+    } catch (e: any) {
+      showToast('error', 'Gagal menghapus user: ' + e.message);
+    }
+  };
+
   const updatePTAccess = async (uid: string, pt_access: string[]) => {
     const { error } = await supabase.from('profiles').update({ pt_access }).eq('id', uid);
     if (error) { showToast('error', 'Gagal: ' + error.message); return; }
@@ -136,6 +171,16 @@ export function UserManagement() {
                   >
                     {targetUserId === u.id ? 'Tutup' : 'Reset Password'}
                   </Button>
+                  <Button 
+                    variant="secondary" 
+                    size="sm" 
+                    className="text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-200"
+                    icon={<Trash2 className="w-3.5 h-3.5" />} 
+                    onClick={() => deleteUser(u.id, u.name)}
+                    disabled={profile?.id === u.id}
+                  >
+                    Hapus
+                  </Button>
                 </div>
               </div>
 
@@ -172,28 +217,30 @@ export function UserManagement() {
       {showAdd && (
         <Card className="p-6 space-y-4">
           <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Shield className="w-4 h-4 text-brand-500" /> Add New User</h3>
-          <div className="grid md:grid-cols-2 gap-4">
-            <Field label="Nama" required><Input value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} /></Field>
-            <Field label="Email" required><Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} /></Field>
-            <Field label="Password" required><Input type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} /></Field>
-            <Field label="Role" required>
-              <Select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value as Role })}>{ALL_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</Select>
-            </Field>
-            <Field label="Jabatan/Grade" required>
-              <Select value={newUser.jabatan} onChange={(e) => setNewUser({ ...newUser, jabatan: e.target.value as Jabatan })}>{JABATAN_LEVELS.map((j) => <option key={j} value={j}>{j}</option>)}</Select>
-            </Field>
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-slate-500 mb-1.5">Akses Multi-Unit PT</div>
-            <div className="flex flex-wrap gap-1.5">
-              {PT_OPTIONS.map((pt) => <button key={pt} onClick={() => togglePT(pt, newUser.pt_access, (v) => setNewUser({ ...newUser, pt_access: v }))}
-                className={cn('px-2 py-1 rounded-lg text-[10px] font-semibold ring-1 transition', newUser.pt_access.includes(pt) ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white text-slate-500 ring-slate-200 hover:bg-slate-50')}>{pt}</button>)}
+          <form onSubmit={handleCreateUser} className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <Field label="Nama" required><Input value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} /></Field>
+              <Field label="Email" required><Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} /></Field>
+              <Field label="Password" required><Input type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} /></Field>
+              <Field label="Role" required>
+                <Select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value as Role })}>{ALL_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</Select>
+              </Field>
+              <Field label="Jabatan/Grade" required>
+                <Select value={newUser.jabatan} onChange={(e) => setNewUser({ ...newUser, jabatan: e.target.value as Jabatan })}>{JABATAN_LEVELS.map((j) => <option key={j} value={j}>{j}</option>)}</Select>
+              </Field>
             </div>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button variant="secondary" size="sm" onClick={() => setShowAdd(false)}>Cancel</Button>
-            <Button size="sm" onClick={addUser}>Create User</Button>
-          </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-500 mb-1.5">Akses Multi-Unit PT</div>
+              <div className="flex flex-wrap gap-1.5">
+                {PT_OPTIONS.map((pt) => <button type="button" key={pt} onClick={() => togglePT(pt, newUser.pt_access, (v) => setNewUser({ ...newUser, pt_access: v }))}
+                  className={cn('px-2 py-1 rounded-lg text-[10px] font-semibold ring-1 transition', newUser.pt_access.includes(pt) ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white text-slate-500 ring-slate-200 hover:bg-slate-50')}>{pt}</button>)}
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button type="button" variant="secondary" size="sm" onClick={() => setShowAdd(false)}>Cancel</Button>
+              <Button type="submit" size="sm">Create User</Button>
+            </div>
+          </form>
         </Card>
       )}
     </div>
