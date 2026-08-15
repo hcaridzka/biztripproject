@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Plus, Shield, Building2, KeyRound, Trash2, Edit3, X, Check } from 'lucide-react';
+import { Users, Plus, Shield, Building2, KeyRound, Trash2, Edit3, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Field } from './ui-shared';
@@ -68,7 +68,7 @@ export function UserManagement() {
     }
   };
 
-  // 1. ADD USER SINKRON DENGAN EDGE FUNCTION
+  // 1. ADD USER LANGSUNG DENGAN AUTH SIGNUP & PROFILES
   const handleCreateUser = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
@@ -78,25 +78,35 @@ export function UserManagement() {
 
     setIsSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('manage-user', {
-        body: {
-          action: 'create',
-          email: newUser.email,
-          password: newUser.password,
-          name: newUser.name,
-          nip: newUser.nip,
-          role: newUser.role,
-          jabatan: newUser.jabatan,
-          pt_access: newUser.pt_access,
-          is_super_admin: newUser.is_super_admin,
-        },
+      // Daftarkan ke Auth Supabase & kirim metadata dasar
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUser.email,
+        password: newUser.password,
+        options: {
+          data: {
+            name: newUser.name,
+            nip: newUser.nip,
+            role: newUser.role,
+            jabatan: newUser.jabatan,
+          }
+        }
       });
 
-      if (error || data?.error) {
-        throw new Error(error?.message || data?.error);
-      }
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('Gagal membuat akun auth.');
 
-      showToast('success', 'User berhasil ditambahkan dan disinkronkan!');
+      // Update data lanjutan (pt_access & is_super_admin) ke tabel profiles
+      const { error: profileError } = await supabase.from('profiles').update({
+        nip: newUser.nip,
+        role: newUser.role,
+        jabatan: newUser.jabatan,
+        pt_access: newUser.pt_access || [],
+        is_super_admin: newUser.is_super_admin || false
+      }).eq('id', authData.user.id);
+
+      if (profileError) throw profileError;
+
+      showToast('success', 'User berhasil ditambahkan!');
       setShowAdd(false);
       setNewUser({
         name: '',
@@ -116,7 +126,7 @@ export function UserManagement() {
     }
   };
 
-  // 2. EDIT USER SINKRON DENGAN EDGE FUNCTION
+  // 2. EDIT USER LANGSUNG KE TABEL PROFILES
   const startEditUser = (u: Profile) => {
     setEditingUser(u);
     setEditForm({
@@ -136,23 +146,17 @@ export function UserManagement() {
 
     setIsSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('manage-user', {
-        body: {
-          action: 'update',
-          userId: editingUser.id,
-          name: editForm.name,
-          email: editForm.email,
-          nip: editForm.nip,
-          role: editForm.role,
-          jabatan: editForm.jabatan,
-          pt_access: editForm.pt_access,
-          is_super_admin: editForm.is_super_admin,
-        },
-      });
+      const { error } = await supabase.from('profiles').update({
+        name: editForm.name,
+        email: editForm.email,
+        nip: editForm.nip,
+        role: editForm.role,
+        jabatan: editForm.jabatan,
+        pt_access: editForm.pt_access,
+        is_super_admin: editForm.is_super_admin,
+      }).eq('id', editingUser.id);
 
-      if (error || data?.error) {
-        throw new Error(error?.message || data?.error);
-      }
+      if (error) throw error;
 
       showToast('success', 'Data user berhasil diperbarui!');
       setEditingUser(null);
@@ -165,26 +169,18 @@ export function UserManagement() {
     }
   };
 
-  // 3. DELETE USER SINKRON DENGAN EDGE FUNCTION
+  // 3. DELETE USER DARI TABEL PROFILES
   const deleteUser = async (uid: string, userName: string) => {
     if (profile?.id === uid) {
       showToast('error', 'Anda tidak bisa menghapus akun Anda sendiri!');
       return;
     }
 
-    if (!confirm(`Apakah Anda yakin ingin menghapus user "${userName}"? Semua data auth dan profil akan dihapus.`)) return;
+    if (!confirm(`Apakah Anda yakin ingin menghapus user "${userName}"?`)) return;
 
     try {
-      const { data, error } = await supabase.functions.invoke('manage-user', {
-        body: {
-          action: 'delete',
-          userId: uid,
-        },
-      });
-
-      if (error || data?.error) {
-        throw new Error(error?.message || data?.error);
-      }
+      const { error } = await supabase.from('profiles').delete().eq('id', uid);
+      if (error) throw error;
 
       setUsers((prev) => prev.filter((u) => u.id !== uid));
       showToast('success', `User ${userName} berhasil dihapus`);
@@ -193,30 +189,17 @@ export function UserManagement() {
     }
   };
 
-  // 4. RESET PASSWORD SINKRON DENGAN EDGE FUNCTION
-  const handleResetPassword = async (uid: string) => {
-    if (!newPassword || newPassword.length < 6) {
-      showToast('error', 'Password baru minimal 6 karakter');
-      return;
-    }
+  // 4. RESET PASSWORD (Menggunakan fitur Recovery Supabase Auth)
+  const handleResetPassword = async (email: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('manage-user', {
-        body: {
-          action: 'change_email_password',
-          userId: uid,
-          newPassword: newPassword,
-        },
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
       });
-
-      if (error || data?.error) {
-        throw new Error(error?.message || data?.error);
-      }
-
-      showToast('success', 'Password berhasil direset!');
+      if (error) throw error;
+      showToast('success', `Email instruksi reset password telah dikirim ke ${email}`);
       setTargetUserId(null);
-      setNewPassword('');
     } catch (e: any) {
-      showToast('error', 'Gagal merubah password: ' + e.message);
+      showToast('error', 'Gagal reset password: ' + e.message);
     }
   };
 
@@ -278,12 +261,9 @@ export function UserManagement() {
                     variant="secondary"
                     size="sm"
                     icon={<KeyRound className="w-3.5 h-3.5 text-slate-600" />}
-                    onClick={() => {
-                      setTargetUserId(targetUserId === u.id ? null : u.id);
-                      setNewPassword('');
-                    }}
+                    onClick={() => handleResetPassword(u.email)}
                   >
-                    {targetUserId === u.id ? 'Tutup' : 'Reset Password'}
+                    Kirim Reset Password
                   </Button>
                   <Button
                     variant="secondary"
@@ -297,32 +277,6 @@ export function UserManagement() {
                   </Button>
                 </div>
               </div>
-
-              {/* Form Reset Password Inline */}
-              {targetUserId === u.id && (
-                <div className="mt-4 p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 flex items-center gap-3 animate-slide-up">
-                  <Input
-                    type="password"
-                    placeholder="Masukkan password baru (min. 6 karakter)"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="flex-1 text-xs"
-                  />
-                  <Button size="sm" onClick={() => handleResetPassword(u.id)}>
-                    Simpan Password
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      setTargetUserId(null);
-                      setNewPassword('');
-                    }}
-                  >
-                    Batal
-                  </Button>
-                </div>
-              )}
 
               {/* Display PT Access */}
               <div className="mt-3">
