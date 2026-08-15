@@ -427,6 +427,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
                         <option value="">Pilih lokasi...</option>
                         {DESTINATION_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
                       </Select>
+                    </Field>
                     {(leg.destination === 'Others' || leg.destination === 'Luar Kota') && (
                       <Field label="Nama Kota/Lokasi" required>
                         <Input value={leg.destination_custom ?? ''} onChange={(e) => updateItinerary(leg.id, { destination_custom: e.target.value })} placeholder="Mis: Padang, Pekanbaru" />
