@@ -183,13 +183,13 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
       const filePath = `approvals/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('trip-attachments')
+        .from('pettycash')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
       const { data: publicUrlData } = supabase.storage
-        .from('trip-attachments')
+        .from('pettycash')
         .getPublicUrl(filePath);
 
       return publicUrlData.publicUrl;
