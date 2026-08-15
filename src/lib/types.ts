@@ -44,6 +44,7 @@ export interface Profile {
   pt_access: string[];
   is_super_admin: boolean;
   is_demo: boolean;
+  pt_unit?: string;
 }
 
 export type TripStatus =

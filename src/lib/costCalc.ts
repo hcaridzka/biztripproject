@@ -155,6 +155,7 @@ export function computePettyCash(
 export interface PerParticipant {
   name: string;
   jabatan: Jabatan;
+  pt_unit?: string;
   perDay: number;
   days: number;
   total: number;
@@ -202,6 +203,7 @@ export function computeCost(params: {
     return {
       name: p.name || '(Belum diisi)',
       jabatan: p.jabatan,
+      pt_unit: p.pt_unit,
       perDay: pp.perDay,
       days: itinerary.reduce((s, l) => s + daysBetween(l.start_date, l.end_date), 0),
       total: pp.total,
