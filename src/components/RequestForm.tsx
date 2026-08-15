@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   FilePlus, Plus, Trash2, Calendar, Users, MapPin, AlertCircle,
-  Paperclip, Send, Calculator, Building2,
+  Paperclip, Send, Calculator, Building2, Clock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -15,73 +15,47 @@ import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import type { ItineraryLeg, Participant, ParticipantCategory, Jabatan, DKTier, TransportChoice, TripCategory } from '../lib/types';
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 export function RequestForm({ onDone }: { onDone: () => void }) {
   const { profile } = useAuth();
   const { showToast, refresh } = useApp();
 
   const [nip, setNip] = useState(profile?.nip ?? '');
   const [jabatan, setJabatan] = useState<Jabatan>(profile?.jabatan ?? 'Staff');
-  const [applicantPt, setApplicantPt] = useState<string>(profile?.pt_unit ?? ''); // PT Perusahaan Pemohon
+  const [applicantPt, setApplicantPt] = useState<string>(profile?.pt_unit ?? '');
   const [origin, setOrigin] = useState('Head Office BSD');
   const [originCustom, setOriginCustom] = useState('');
-  const [depDate, setDepDate] = useState('');
+  
   const [depTime, setDepTime] = useState('08:00');
-  const [retDate, setRetDate] = useState('');
   const [retTime, setRetTime] = useState('17:00');
+
   const [purpose, setPurpose] = useState('');
   const [needsVehicle, setNeedsVehicle] = useState<TransportChoice>('Kendaraan Dinas');
   const [needsDriver, setNeedsDriver] = useState(true);
   const [companyBurdens, setCompanyBurdens] = useState<string[]>([]);
   const [tripCategory, setTripCategory] = useState<TripCategory>(null);
+  
   const [itinerary, setItinerary] = useState<ItineraryLeg[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [employeeRemarks, setEmployeeRemarks] = useState('');
   const [pettyCash, setPettyCash] = useState(false);
-  const [pettyFileBase64, setPettyFileBase64] = useState<string | null>(null);
+  const [pettyFile, setPettyFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const days = useMemo(() => daysBetween(depDate, retDate), [depDate, retDate]);
+  const { depDate, retDate, days } = useMemo(() => {
+    if (itinerary.length === 0) return { depDate: '', retDate: '', days: 0 };
+    const sortedLegs = [...itinerary].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+    const firstLeg = sortedLegs[0];
+    const lastLeg = [...sortedLegs].sort((a, b) => new Date(a.end_date).getTime() - new Date(b.end_date).getTime())[sortedLegs.length - 1];
+    
+    const dDate = firstLeg?.start_date ?? '';
+    const rDate = lastLeg?.end_date ?? '';
+    const totalDays = dDate && rDate ? daysBetween(dDate, rDate) : 0;
+    return { depDate: dDate, retDate: rDate, days: totalDays };
+  }, [itinerary]);
+
   const kpScheme = useMemo(() => defaultKPScheme(itinerary), [itinerary]);
 
-  const validation = useMemo(() => {
-    const errors: string[] = [];
-    if (!nip.trim()) errors.push('NIP wajib diisi');
-    if (!applicantPt) errors.push('PT Perusahaan Pemohon wajib dipilih');
-    if (!purpose.trim()) errors.push('Tujuan perjalanan wajib diisi');
-    if (!depDate) errors.push('Tanggal berangkat wajib diisi');
-    if (!retDate) errors.push('Tanggal pulang wajib diisi');
-    if (depDate && retDate && new Date(retDate) < new Date(depDate)) errors.push('Tanggal pulang tidak boleh sebelum tanggal berangkat');
-    if (origin === 'Others' && !originCustom.trim()) errors.push('Nama lokasi asal (Others) wajib diisi');
-    if (companyBurdens.length === 0) errors.push('Minimal 1 PT Beban Biaya wajib dipilih');
-    if (itinerary.length === 0) errors.push('Minimal 1 baris Itinerary wajib diisi');
-    itinerary.forEach((leg, i) => {
-      if (!leg.start_date) errors.push(`Itinerary baris ${i + 1}: Tanggal mulai wajib diisi`);
-      if (!leg.end_date) errors.push(`Itinerary baris ${i + 1}: Tanggal selesai wajib diisi`);
-      if (leg.start_date && leg.end_date && new Date(leg.end_date) < new Date(leg.start_date)) errors.push(`Itinerary baris ${i + 1}: Tanggal selesai sebelum tanggal mulai`);
-      if (!leg.destination) errors.push(`Itinerary baris ${i + 1}: Lokasi tujuan wajib dipilih`);
-      if ((leg.destination === 'Others' || leg.destination === 'Dalam Kota' || leg.destination === 'Luar Kota') && !leg.destination_custom?.trim()) errors.push(`Itinerary baris ${i + 1}: Nama kota/custom wajib diisi`);
-      if (leg.isWithinCity && !leg.dkTier) errors.push(`Itinerary baris ${i + 1}: Tier jarak DK wajib dipilih`);
-      if (!leg.agenda.trim()) errors.push(`Itinerary baris ${i + 1}: Agenda wajib diisi`);
-    });
-    participants.forEach((p, i) => {
-      if (!p.name.trim()) errors.push(`Partisipan tambahan baris ${i + 1}: Nama wajib diisi`);
-      if (p.category === 'Eksternal' && !p.keterangan?.trim()) errors.push(`Partisipan tambahan baris ${i + 1}: Keterangan eksternal wajib diisi`);
-    });
-    if (pettyCash && !pettyFileBase64) errors.push('Petty Cash dicentang — wajib unggah file bukti persetujuan chat');
-    return errors;
-  }, [nip, applicantPt, purpose, depDate, retDate, origin, originCustom, companyBurdens, itinerary, participants, pettyCash, pettyFileBase64, jabatan]);
-
-  const canSubmit = validation.length === 0 && !busy;
-
+  // Objek Utama Pemohon
   const mainApplicant = useMemo<Participant>(() => ({
     id: 'main-applicant',
     name: profile?.name ?? '',
@@ -90,7 +64,61 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
     pt_unit: applicantPt,
   }), [profile, jabatan, applicantPt]);
 
-  const allParticipants = useMemo(() => [mainApplicant, ...participants], [mainApplicant, participants]);
+  // Menggabungkan Pemohon Utama dan Partisipan Tambahan dengan proteksi agar pemohon tidak tertimpa/hilang
+  const allParticipants = useMemo(() => {
+    const othersFiltered = participants.filter((p) => p.id !== 'main-applicant');
+    return [mainApplicant, ...othersFiltered];
+  }, [mainApplicant, participants]);
+
+  const validation = useMemo(() => {
+    const errors: string[] = [];
+    if (!nip.trim()) errors.push('NIP wajib diisi');
+    if (!applicantPt) errors.push('PT Perusahaan Pemohon wajib dipilih');
+    if (!purpose.trim()) errors.push('Tujuan perjalanan wajib diisi');
+    if (origin === 'Others' && !originCustom.trim()) errors.push('Nama lokasi asal (Others) wajib diisi');
+    if (companyBurdens.length === 0) errors.push('Minimal 1 PT Beban Biaya wajib dipilih');
+    if (itinerary.length === 0) errors.push('Minimal 1 baris Itinerary wajib diisi');
+
+    itinerary.forEach((leg, i) => {
+      if (!leg.start_date) errors.push(`Itinerary baris ${i + 1}: Tanggal mulai wajib diisi`);
+      if (!leg.start_time) errors.push(`Itinerary baris ${i + 1}: Jam mulai wajib diisi`);
+      if (!leg.end_date) errors.push(`Itinerary baris ${i + 1}: Tanggal selesai wajib diisi`);
+      if (!leg.end_time) errors.push(`Itinerary baris ${i + 1}: Jam selesai wajib diisi`);
+      
+      if (leg.start_date && leg.end_date) {
+        const startDt = new Date(`${leg.start_date}T${leg.start_time || '00:00'}`);
+        const endDt = new Date(`${leg.end_date}T${leg.end_time || '00:00'}`);
+        if (endDt < startDt) {
+          errors.push(`Itinerary baris ${i + 1}: Tanggal & jam selesai tidak boleh sebelum tanggal & jam mulai`);
+        }
+      }
+
+      if (!leg.destination) errors.push(`Itinerary baris ${i + 1}: Lokasi tujuan wajib dipilih`);
+      if ((leg.destination === 'Others' || leg.destination === 'Dalam Kota' || leg.destination === 'Luar Kota') && !leg.destination_custom?.trim()) {
+        errors.push(`Itinerary baris ${i + 1}: Nama kota/custom wajib diisi`);
+      }
+      if (leg.isWithinCity && !leg.dkTier) errors.push(`Itinerary baris ${i + 1}: Tier jarak DK wajib dipilih`);
+      if (!leg.agenda.trim()) errors.push(`Itinerary baris ${i + 1}: Agenda wajib diisi`);
+    });
+
+    for (let i = 0; i < itinerary.length - 1; i++) {
+      const currentEnd = new Date(`${itinerary[i].end_date}T${itinerary[i].end_time || '00:00'}`);
+      const nextStart = new Date(`${itinerary[i + 1].start_date}T${itinerary[i + 1].start_time || '00:00'}`);
+      if (!isNaN(currentEnd.getTime()) && !isNaN(nextStart.getTime()) && nextStart < currentEnd) {
+        errors.push(`Itinerary baris ${i + 2}: Waktu mulai tidak boleh mendahului waktu selesai baris sebelumnya (Overlap)`);
+      }
+    }
+
+    participants.forEach((p, i) => {
+      if (!p.name.trim()) errors.push(`Partisipan tambahan baris ${i + 1}: Nama wajib diisi`);
+      if (p.category === 'Eksternal' && !p.keterangan?.trim()) errors.push(`Partisipan tambahan baris ${i + 1}: Keterangan eksternal wajib diisi`);
+    });
+
+    if (pettyCash && !pettyFile) errors.push('Petty Cash dicentang — wajib unggah file bukti persetujuan chat');
+    return errors;
+  }, [nip, applicantPt, purpose, origin, originCustom, companyBurdens, itinerary, participants, pettyCash, pettyFile]);
+
+  const canSubmit = validation.length === 0 && !busy;
 
   const preview = useMemo(() => {
     if (itinerary.length === 0 || !depDate || !retDate) return null;
@@ -100,10 +128,22 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
   const pettyPreview = useMemo(() => computePettyCash(allParticipants, itinerary), [allParticipants, itinerary]);
 
   const addItinerary = () => {
+    const lastLeg = itinerary[itinerary.length - 1];
+    const defaultDate = lastLeg ? lastLeg.end_date : new Date().toISOString().split('T')[0];
+    const defaultStartTime = lastLeg ? lastLeg.end_time || '08:00' : '08:00';
+
     setItinerary((prev) => [...prev, {
-      id: uid(), start_date: depDate, end_date: retDate,
-      destination: '', destination_custom: '', kpScheme: 'KP2',
-      isWithinCity: false, isLuarkota: false, agenda: '',
+      id: uid(), 
+      start_date: defaultDate, 
+      start_time: defaultStartTime,
+      end_date: defaultDate, 
+      end_time: '17:00',
+      destination: '', 
+      destination_custom: '', 
+      kpScheme: 'KP2',
+      isWithinCity: false, 
+      isLuarkota: false, 
+      agenda: '',
     }]);
   };
 
@@ -124,13 +164,26 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
 
   const toggleBurden = (pt: string) => setCompanyBurdens((prev) => prev.includes(pt) ? prev.filter((p) => p !== pt) : [...prev, pt]);
 
-  const handlePettyFile = async (file: File | null) => {
-    if (!file) { setPettyFileBase64(null); return; }
+  const uploadPettyFileToStorage = async (file: File): Promise<string | null> => {
     try {
-      const b64 = await fileToBase64(file);
-      setPettyFileBase64(b64);
-      showToast('success', 'File berhasil diunggah (Base64)');
-    } catch (e: any) { showToast('error', 'Gagal konversi file: ' + e.message); }
+      const fileExt = file.name.split('.').pop();
+      const fileName = `petty_${profile?.id ?? 'user'}_${Date.now()}.${fileExt}`;
+      const filePath = `approvals/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('trip-attachments')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('trip-attachments')
+        .getPublicUrl(filePath);
+
+      return publicUrlData.publicUrl;
+    } catch (e: any) {
+      throw new Error('Gagal upload ke storage: ' + e.message);
+    }
   };
 
   const handleSubmit = async () => {
@@ -140,7 +193,17 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
     }
     setBusy(true);
 
-    // LOGIKA BYPASS PIC OBLIGO
+    let pettyFileUrl: string | null = null;
+    if (pettyCash && pettyFile) {
+      try {
+        pettyFileUrl = await uploadPettyFileToStorage(pettyFile);
+      } catch (e: any) {
+        showToast('error', e.message);
+        setBusy(false);
+        return;
+      }
+    }
+
     const requiresPicObligo = needsVehicle === 'Kendaraan Dinas' || needsDriver === true;
     const initialStatus = requiresPicObligo 
       ? 'Pending PIC Obligo Approval' 
@@ -152,7 +215,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
       requester_name: profile?.name,
       requester_nip: nip,
       requester_jabatan: jabatan,
-      requester_pt: applicantPt, // Kolom PT Pemohon
+      requester_pt: applicantPt,
       origin,
       origin_custom: origin === 'Others' ? originCustom : null,
       departure_date: depDate, departure_time: depTime,
@@ -167,7 +230,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
       itinerary, participants: allParticipants,
       petty_cash_requested: pettyCash,
       petty_cash_holder: pettyPreview.holder,
-      petty_cash_approval_file: pettyFileBase64,
+      petty_cash_approval_file: pettyFileUrl,
       kp_scheme: kpScheme,
       cost_grand_total: cost.grandTotal,
       fuel_cost: 0,
@@ -211,7 +274,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
           <div className="flex items-start gap-2.5">
             <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <div className="text-sm font-bold text-amber-800">Submit Shield — {validation.length} field(s) belum lengkap</div>
+              <div className="text-sm font-bold text-amber-800">Submit Shield — {validation.length} field(s) belum lengkap / overlap</div>
               <ul className="mt-1.5 space-y-0.5 text-xs text-amber-700">
                 {validation.slice(0, 8).map((e, i) => <li key={i}>• {e}</li>)}
                 {validation.length > 8 && <li>• ...dan {validation.length - 8} lainnya</li>}
@@ -243,25 +306,25 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
             </Select>
           </Field>
         </div>
-        <div className="grid md:grid-cols-4 gap-4">
-          <Field label="Tanggal Berangkat" required>
-            <Input type="date" value={depDate} onChange={(e) => setDepDate(e.target.value)} />
-          </Field>
-          <Field label="Waktu Berangkat" required>
+        
+        <div className="grid md:grid-cols-2 gap-4">
+          <Field label="Waktu Berangkat (Jam)" required>
             <Input type="time" value={depTime} onChange={(e) => setDepTime(e.target.value)} />
           </Field>
-          <Field label="Tanggal Pulang" required>
-            <Input type="date" value={retDate} onChange={(e) => setRetDate(e.target.value)} />
-          </Field>
-          <Field label="Waktu Pulang" required>
+          <Field label="Waktu Pulang (Jam)" required>
             <Input type="time" value={retTime} onChange={(e) => setRetTime(e.target.value)} />
           </Field>
         </div>
+
         {depDate && retDate && (
-          <div className="text-xs text-slate-500 flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5" /> Durasi dinas: <span className="font-bold text-brand-600">{days} hari</span>
+          <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-brand-600" /> Otomatis dari Itinerary: <strong>{depDate}</strong> s.d <strong>{retDate}</strong>
+            </span>
+            <span className="font-bold text-brand-600">Total Durasi: {days} hari</span>
           </div>
         )}
+
         <div className="grid md:grid-cols-3 gap-4">
           <Field label="Kebutuhan Transportasi" required>
             <Select value={needsVehicle} onChange={(e) => setNeedsVehicle(e.target.value as TransportChoice)}>
@@ -318,11 +381,14 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
       {/* Itinerary */}
       <Card className="p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><MapPin className="w-4 h-4 text-slate-400" /> Itinerary Perjalanan</h3>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><MapPin className="w-4 h-4 text-slate-400" /> Itinerary Perjalanan</h3>
+            <p className="text-[11px] text-slate-400 mt-0.5">Tanggal & jam berangkat serta pulang dihitung otomatis dari baris-baris ini tanpa duplikasi input</p>
+          </div>
           <Button size="sm" variant="secondary" icon={<Plus className="w-3.5 h-3.5" />} onClick={addItinerary}>Add Row</Button>
         </div>
         {itinerary.length === 0 ? (
-          <EmptyState icon={<MapPin className="w-6 h-6" />} title="Belum ada itinerary" message="Klik Add Row untuk menambahkan lokasi tujuan." />
+          <EmptyState icon={<MapPin className="w-6 h-6" />} title="Belum ada itinerary" message="Klik Add Row untuk menambahkan rute, tanggal, dan jam tujuan." />
         ) : (
           <div className="space-y-3">
             {itinerary.map((leg, i) => {
@@ -331,17 +397,25 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
               return (
                 <div key={leg.id} className="rounded-xl ring-1 ring-slate-200 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-500">Leg {i + 1}</span>
+                    <span className="text-xs font-bold text-slate-500 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-brand-600" /> Leg {i + 1}
+                    </span>
                     <button onClick={() => removeItinerary(leg.id)} className="text-rose-400 hover:text-rose-600 transition">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="grid md:grid-cols-2 gap-3">
+                  <div className="grid md:grid-cols-4 gap-3">
                     <Field label="Tanggal Mulai" required>
                       <Input type="date" value={leg.start_date} onChange={(e) => updateItinerary(leg.id, { start_date: e.target.value })} />
                     </Field>
+                    <Field label="Jam Mulai" required>
+                      <Input type="time" value={leg.start_time ?? '08:00'} onChange={(e) => updateItinerary(leg.id, { start_time: e.target.value })} />
+                    </Field>
                     <Field label="Tanggal Selesai" required>
                       <Input type="date" value={leg.end_date} onChange={(e) => updateItinerary(leg.id, { end_date: e.target.value })} />
+                    </Field>
+                    <Field label="Jam Selesai" required>
+                      <Input type="time" value={leg.end_time ?? '17:00'} onChange={(e) => updateItinerary(leg.id, { end_time: e.target.value })} />
                     </Field>
                   </div>
                   <div className="grid md:grid-cols-2 gap-3">
@@ -353,7 +427,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
                         <option value="">Pilih lokasi...</option>
                         {DESTINATION_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
                       </Select>
-                    </Field>
+                    </Select>
                     {(leg.destination === 'Others' || leg.destination === 'Luar Kota') && (
                       <Field label="Nama Kota/Lokasi" required>
                         <Input value={leg.destination_custom ?? ''} onChange={(e) => updateItinerary(leg.id, { destination_custom: e.target.value })} placeholder="Mis: Padang, Pekanbaru" />
@@ -410,12 +484,12 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
         </div>
       </Card>
 
-      {/* Additional Participants — optional */}
+      {/* Additional Participants */}
       <Card className="p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Users className="w-4 h-4 text-slate-400" /> Partisipan Tambahan Dinas</h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Opsional — hanya jika pergi bersama rekan/pihak lain</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Opsional — hanya jika pergi bersama rekan/pihak lain. Pemohon utama tidak akan tertimpa.</p>
           </div>
           <Button size="sm" variant="secondary" icon={<Plus className="w-3.5 h-3.5" />} onClick={addParticipant}>Add Row</Button>
         </div>
@@ -459,7 +533,6 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
             })}
           </div>
         )}
-        <p className="text-[11px] text-slate-400">Tabel ini hanya untuk partisipan <strong>tambahan</strong>. Pegawai Pemohon sudah otomatis dihitung. Internal: dihitung tunjangan berdasarkan Grade/Jabatan. Eksternal: tidak dihitung tunjangan, wajib isi keterangan.</p>
       </Card>
 
       {/* Petty cash */}
@@ -472,16 +545,16 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
         {pettyCash && (
           <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200 p-4 space-y-3">
             <div className="flex items-center gap-2 text-xs font-semibold text-amber-700">
-              <AlertCircle className="w-3.5 h-3.5" /> Wajib unggah file/foto bukti persetujuan chat
+              <AlertCircle className="w-3.5 h-3.5" /> Wajib unggah file/foto bukti persetujuan chat (Disimpan ke Supabase Storage)
             </div>
-            <input type="file" accept="image/*,.pdf" onChange={(e) => handlePettyFile(e.target.files?.[0] ?? null)}
+            <input type="file" accept="image/*,.pdf" onChange={(e) => setPettyFile(e.target.files?.[0] ?? null)}
               className="block w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100" />
-            {pettyFileBase64 && <p className="text-xs text-emerald-600 flex items-center gap-1"><Paperclip className="w-3 h-3" /> File terunggah (Base64)</p>}
+            {pettyFile && <p className="text-xs text-emerald-600 flex items-center gap-1"><Paperclip className="w-3 h-3" /> File terpilih: {pettyFile.name}</p>}
           </div>
         )}
       </Card>
 
-      {/* Cost preview with per-leg breakdown */}
+      {/* Cost preview */}
       {preview && (
         <Card className="p-6 space-y-4">
           <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Calculator className="w-4 h-4 text-slate-400" /> Estimasi Awal — Rincian per Pegawai</h3>
@@ -502,7 +575,6 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
                     {pp.pettyCash > 0 && <div className="text-[11px] text-slate-400">Petty: {formatIDR(pp.pettyCash)}</div>}
                   </div>
                 </div>
-                {/* Per-leg detail */}
                 {pp.legs.length > 0 && (
                   <div className="mt-2 pl-11 space-y-0.5">
                     {pp.legs.map((leg, j) => (
