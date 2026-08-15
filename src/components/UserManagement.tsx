@@ -42,38 +42,47 @@ export function UserManagement() {
     setter(list.includes(pt) ? list.filter((p) => p !== pt) : [...list, pt]);
   };
 
-  const handleCreateUser = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
-      showToast('error', 'Nama, email, dan password wajib diisi');
-      return;
-    }
+ const handleCreateUser = async (e?: React.FormEvent) => {
+  if (e) e.preventDefault();
+  if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
+    showToast('error', 'Nama, email, dan password wajib diisi');
+    return;
+  }
 
-    try {
-      const newUserId = crypto.randomUUID();
+  try {
+    // 1. Buat User Auth lewat Supabase Admin API
+    const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
+      email: newUser.email,
+      password: newUser.password,
+      email_confirm: true,
+      user_metadata: { name: newUser.name }
+    });
 
-      const { error } = await supabase.from('profiles').insert([
-        {
-          id: newUserId,
-          email: newUser.email,
-          name: newUser.name,
-          password: newUser.password,
-          role: newUser.role,
-          jabatan: newUser.jabatan,
-          pt_access: newUser.pt_access
-        }
-      ]);
+    if (authErr) throw authErr;
 
-      if (error) throw error;
+    const uid = authData.user.id;
 
-      showToast('success', 'User berhasil ditambahkan!');
-      setShowAdd(false);
-      setNewUser({ name: '', email: '', password: '', role: 'Employee', jabatan: 'Staff', pt_access: [] });
-      loadUsers();
-    } catch (err: any) {
-      showToast('error', 'Gagal membuat user: ' + err.message);
-    }
-  };
+    // 2. Update record profile yang dibuat oleh trigger Supabase Auth (atau upsert)
+    const { error: profileErr } = await supabase.from('profiles').upsert({
+      id: uid,
+      email: newUser.email,
+      name: newUser.name,
+      role: newUser.role,
+      jabatan: newUser.jabatan,
+      pt_access: newUser.pt_access,
+      is_demo: false
+    });
+
+    if (profileErr) throw profileErr;
+
+    showToast('success', 'User berhasil ditambahkan!');
+    setShowAdd(false);
+    setNewUser({ name: '', email: '', password: '', role: 'Employee', jabatan: 'Staff', pt_access: [] });
+    loadUsers();
+  } catch (err: any) {
+    showToast('error', 'Gagal membuat user: ' + err.message);
+  }
+};
 
   const deleteUser = async (uid: string, userName: string) => {
     if (profile?.id === uid) {
