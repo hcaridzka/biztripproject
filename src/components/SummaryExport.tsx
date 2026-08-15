@@ -1,13 +1,15 @@
 import { useState, useMemo } from 'react';
-import { BarChart3, Download, Users, Building2, Truck } from 'lucide-react';
+import { BarChart3, Download, Users, Building2, Truck, FileSpreadsheet, FileText } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Card, Button, Select, Field } from './ui-shared';
+import { Card, Button, Input, Field } from './ui-shared';
 import { PT_OPTIONS } from '../lib/constants';
-import { formatIDR, downloadCSV } from '../lib/utils';
-import type { BizTrip } from '../lib/types';
+import { formatIDR } from '../lib/utils';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export function SummaryExport() {
-  const { trips, vehicles } = useApp();
+  const { trips } = useApp();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
 
   const monthTrips = useMemo(() => trips.filter((t) => t.created_at?.slice(0, 7) === month), [trips, month]);
@@ -57,23 +59,85 @@ export function SummaryExport() {
     return Object.values(map).map((v) => ({ ...v, mileage: v.kmEnd - v.kmStart }));
   }, [monthTrips]);
 
-  const exportCSV = () => {
-    const rows: (string | number)[][] = [];
-    rows.push(['SUMMARY BULANAN — Aridzka Group Business Trips']);
-    rows.push(['Periode', month]);
-    rows.push([]);
-    rows.push(['=== SUMMARY PER EMPLOYEE ===']);
-    rows.push(['Nama Pegawai', 'Jabatan', 'Jumlah Hari Dinas', 'Frekuensi Perjalanan', 'Total Advance', 'Total Aktual', 'Selisih Varian']);
-    perEmployee.forEach((e: any) => rows.push([e.name, e.jabatan, e.days, e.freq, e.advance, e.actual, e.variance]));
-    rows.push([]);
-    rows.push(['=== SUMMARY PER PT ===']);
-    rows.push(['Nama Unit PT', 'Total Transaksi', 'Akumulasi Advance', 'Akumulasi Aktual']);
-    perPT.forEach((p) => rows.push([p.pt, p.trips, p.advance, p.actual]));
-    rows.push([]);
-    rows.push(['=== SUMMARY PER KENDARAAN (PIC OBLIGO) ===']);
-    rows.push(['Plat Nomor', 'Jenis Mobil', 'Total BBM', 'Total E-Toll', 'KM Awal', 'KM Akhir', 'Selisih Mileage']);
-    perVehicle.forEach((v) => rows.push([v.plate, v.type, v.fuel, v.toll, v.kmStart, v.kmEnd, v.mileage]));
-    downloadCSV(`summary-${month}.csv`, rows);
+  const exportExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    const empData = perEmployee.map((e: any) => ({
+      'Nama Pegawai': e.name,
+      'Jabatan': e.jabatan,
+      'Jumlah Hari Dinas': e.days,
+      'Frekuensi': e.freq,
+      'Total Advance': e.advance,
+      'Total Aktual': e.actual,
+      'Selisih Varian': e.variance
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(empData), 'Summary Employee');
+
+    const ptData = perPT.map((p) => ({
+      'Nama Unit PT': p.pt,
+      'Total Transaksi': p.trips,
+      'Akumulasi Advance': p.advance,
+      'Akumulasi Aktual': p.actual
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ptData), 'Summary PT');
+
+    const vehData = perVehicle.map((v) => ({
+      'Plat Nomor': v.plate,
+      'Jenis Mobil': v.type,
+      'Total BBM': v.fuel,
+      'Total E-Toll': v.toll,
+      'KM Awal': v.kmStart,
+      'KM Akhir': v.kmEnd,
+      'Selisih Mileage': v.mileage
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vehData), 'Summary Kendaraan');
+
+    XLSX.writeFile(wb, `Monthly-Summary-${month}.xlsx`);
+  };
+
+  const exportPDF = () => {
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    doc.setFontSize(14);
+    doc.text(`Monthly Summary Report — Periode ${month}`, 14, 15);
+
+    doc.setFontSize(11);
+    doc.text('1. Summary Per Employee', 14, 25);
+    autoTable(doc, {
+      startY: 28,
+      head: [['Nama Pegawai', 'Jabatan', 'Hari', 'Frek', 'Advance', 'Aktual', 'Varian']],
+      body: perEmployee.map((e) => [e.name, e.jabatan, e.days, e.freq, formatIDR(e.advance), formatIDR(e.actual), formatIDR(e.variance)]),
+      theme: 'grid',
+      headStyles: { fillColor: [79, 70, 229] },
+      styles: { fontSize: 9 }
+    });
+
+    let finalY = (doc as any).lastAutoTable.finalY + 10;
+    if (finalY > 170) { doc.addPage(); finalY = 20; }
+
+    doc.text('2. Summary Per PT (Beban Unit)', 14, finalY);
+    autoTable(doc, {
+      startY: finalY + 3,
+      head: [['Nama PT', 'Total Transaksi', 'Advance', 'Aktual']],
+      body: perPT.map((p) => [p.pt, p.trips, formatIDR(p.advance), formatIDR(p.actual)]),
+      theme: 'grid',
+      headStyles: { fillColor: [79, 70, 229] },
+      styles: { fontSize: 9 }
+    });
+
+    finalY = (doc as any).lastAutoTable.finalY + 10;
+    if (finalY > 170) { doc.addPage(); finalY = 20; }
+
+    doc.text('3. Summary Per Kendaraan (PIC Obligo)', 14, finalY);
+    autoTable(doc, {
+      startY: finalY + 3,
+      head: [['Plat Nomor', 'Jenis', 'BBM', 'E-Toll', 'KM Awal', 'KM Akhir', 'Mileage']],
+      body: perVehicle.map((v) => [v.plate, v.type, formatIDR(v.fuel), formatIDR(v.toll), v.kmStart, v.kmEnd, `${v.mileage} km`]),
+      theme: 'grid',
+      headStyles: { fillColor: [79, 70, 229] },
+      styles: { fontSize: 9 }
+    });
+
+    doc.save(`Monthly-Summary-${month}.pdf`);
   };
 
   return (
@@ -84,7 +148,10 @@ export function SummaryExport() {
           <h2 className="text-xl font-bold text-slate-900">Monthly Summary</h2>
           <p className="text-sm text-slate-500">Rekapitulasi 3-tier: Employee, PT, Kendaraan</p>
         </div>
-        <Button icon={<Download className="w-4 h-4" />} onClick={exportCSV}>Export to CSV</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" icon={<FileSpreadsheet className="w-4 h-4 text-emerald-600" />} onClick={exportExcel}>Export Excel</Button>
+          <Button variant="secondary" icon={<FileText className="w-4 h-4 text-rose-600" />} onClick={exportPDF}>Export PDF</Button>
+        </div>
       </div>
 
       <Card className="p-4">
@@ -147,8 +214,4 @@ export function SummaryExport() {
       </Card>
     </div>
   );
-}
-
-function Input(props: any) {
-  return <input {...props} className="w-full rounded-xl border-0 ring-1 ring-slate-200 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 transition" />;
 }
