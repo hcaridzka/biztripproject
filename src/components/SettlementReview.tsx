@@ -2,9 +2,9 @@ import { useState, useMemo } from 'react';
 import { ClipboardList, Plus, Trash2, Check, X, AlertCircle, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
-import { Card, Button, Input, Select, Field, Textarea, EmptyState, StatusBadge, Modal, formatIDR } from './ui-shared';
+import { Card, Button, Input, Select, Field, Textarea, EmptyState, StatusBadge, formatIDR } from './ui-shared';
 import { PT_OPTIONS } from '../lib/constants';
-import { uid, formatDate } from '../lib/utils';
+import { uid } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import type { BizTrip } from '../lib/types';
 
@@ -21,8 +21,7 @@ export function SettlementReview({ onPrint }: { onPrint: (id: string) => void })
     setSelected(t);
     const advance = Number(t.cost_grand_total) || 0;
     const actual = Number(t.realization_total) || 0;
-    const diff = actual - advance;
-    // Auto-seed claim rows
+    
     setClaimRows([
       { id: uid(), name: 'Advance Diterima', nominal: advance, claim_status: 'Refund', pt_burden: t.company_burden?.[0] ?? PT_OPTIONS[0] },
       { id: uid(), name: 'Realisasi Aktual', nominal: actual, claim_status: 'Reimburse', pt_burden: t.company_burden?.[0] ?? PT_OPTIONS[0] },
@@ -35,8 +34,10 @@ export function SettlementReview({ onPrint }: { onPrint: (id: string) => void })
   const removeRow = (id: string) => setClaimRows((r) => r.filter((x) => x.id !== id));
 
   const advance = Number(selected?.cost_grand_total) || 0;
-  const actual = Number(selected?.realization_total) || 0;
-  const diff = actual - advance;
+  
+  // Kalkulasi total realisasi/disetujui dinamis berdasarkan input override HR
+  const approvedTotal = claimRows.reduce((s, r) => s + (Number(r.nominal) || 0), 0);
+  const diff = approvedTotal - advance;
   const category = diff > 0 ? 'Reimburse' : diff < 0 ? 'Refund' : 'Settled';
 
   const finalize = async (action: 'approve' | 'partial' | 'reject') => {
@@ -47,7 +48,6 @@ export function SettlementReview({ onPrint }: { onPrint: (id: string) => void })
       else if (diff > 0) nextStatus = 'Pending Reimbursement Approval';
       else if (diff < 0) nextStatus = 'Pending Refund';
 
-      const approvedTotal = claimRows.reduce((s, r) => s + r.nominal, 0);
       await updateTrip(selected.id, {
         status: nextStatus,
         settlement_result: action === 'approve' ? 'Approved' : action === 'partial' ? 'Partial Approved' : 'Rejected',
@@ -57,17 +57,38 @@ export function SettlementReview({ onPrint }: { onPrint: (id: string) => void })
         settlement_reviewed_at: new Date().toISOString(),
         settlement_number: `STL-${new Date().getFullYear()}-${selected.id.slice(0, 4).toUpperCase()}`,
       });
+
       // Save claim rows
       await supabase.from('settlement_claim_rows').delete().eq('trip_id', selected.id);
       for (let i = 0; i < claimRows.length; i++) {
         const r = claimRows[i];
-        await supabase.from('settlement_claim_rows').insert({ id: r.id, trip_id: selected.id, name: r.name, nominal: r.nominal, claim_status: r.claim_status, pt_burden: r.pt_burden, sort_order: i });
+        await supabase.from('settlement_claim_rows').insert({ 
+          id: r.id, 
+          trip_id: selected.id, 
+          name: r.name, 
+          nominal: r.nominal, 
+          claim_status: r.claim_status, 
+          pt_burden: r.pt_burden, 
+          sort_order: i 
+        });
       }
-      await supabase.from('trip_tracking').insert({ trip_id: selected.id, actor_name: profile?.name ?? '', actor_role: 'HR Manager', action: `Settlement ${action}`, from_status: selected.status, to_status: nextStatus, remarks: settleNote });
+
+      await supabase.from('trip_tracking').insert({ 
+        trip_id: selected.id, 
+        actor_name: profile?.name ?? '', 
+        actor_role: 'HR Manager', 
+        action: `Settlement ${action}`, 
+        from_status: selected.status, 
+        to_status: nextStatus, 
+        remarks: settleNote 
+      });
+
       showToast('success', `Settlement ${action}. Status -> ${nextStatus}`);
       setSelected(null);
       refresh();
-    } catch (e: any) { showToast('error', 'Gagal: ' + e.message); }
+    } catch (e: any) { 
+      showToast('error', 'Gagal: ' + e.message); 
+    }
   };
 
   const tripReceipts = selected ? settlementReceipts.filter((r) => r.trip_id === selected.id) : [];
@@ -111,7 +132,7 @@ export function SettlementReview({ onPrint }: { onPrint: (id: string) => void })
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-xl bg-slate-50 p-4"><div className="text-xs text-slate-400">Advance</div><div className="text-lg font-bold text-slate-800 mt-1">{formatIDR(advance)}</div></div>
-              <div className="rounded-xl bg-slate-50 p-4"><div className="text-xs text-slate-400">Actual</div><div className="text-lg font-bold text-slate-800 mt-1">{formatIDR(actual)}</div></div>
+              <div className="rounded-xl bg-slate-50 p-4"><div className="text-xs text-slate-400">Total Disetujui (Override)</div><div className="text-lg font-bold text-slate-800 mt-1">{formatIDR(approvedTotal)}</div></div>
               <div className={`rounded-xl p-4 ${diff > 0 ? 'bg-amber-50' : diff < 0 ? 'bg-emerald-50' : 'bg-slate-50'}`}>
                 <div className="text-xs text-slate-400">Selisih ({category})</div>
                 <div className={`text-lg font-bold mt-1 ${diff > 0 ? 'text-amber-700' : diff < 0 ? 'text-emerald-700' : 'text-slate-800'}`}>{formatIDR(Math.abs(diff))}</div>
@@ -125,25 +146,37 @@ export function SettlementReview({ onPrint }: { onPrint: (id: string) => void })
             )}
           </Card>
 
-          {/* Receipts uploaded by employee */}
+          {/* Bukti Pengeluaran & Nota Karyawan (Dari database settlement_receipts) */}
           {tripReceipts.length > 0 && (
             <Card className="p-6 space-y-3">
-              <h3 className="text-sm font-bold text-slate-800">Bukti Pengeluaran Karyawan</h3>
-              <div className="grid md:grid-cols-2 gap-2">
+              <h3 className="text-sm font-bold text-slate-800">Bukti Pengeluaran & Nota Karyawan</h3>
+              <div className="grid md:grid-cols-2 gap-3">
                 {tripReceipts.map((r) => (
-                  <div key={r.id} className="rounded-xl ring-1 ring-slate-100 p-3 flex items-center justify-between">
-                    <div><div className="text-xs font-semibold text-slate-700">{r.category}</div><div className="text-[11px] text-slate-400">{r.description}</div></div>
-                    <div className="text-sm font-bold text-slate-800">{formatIDR(Number(r.amount) || 0)}</div>
+                  <div key={r.id} className="rounded-xl ring-1 ring-slate-100 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-semibold text-slate-700">{r.category}</div>
+                        <div className="text-[11px] text-slate-400">{r.description}</div>
+                      </div>
+                      <div className="text-sm font-bold text-slate-800">{formatIDR(Number(r.amount) || 0)}</div>
+                    </div>
+                    {r.file_base64 && (
+                      <div className="mt-2">
+                        <a href={r.file_base64} target="_blank" rel="noreferrer" className="text-xs text-purple-600 hover:underline flex items-center gap-1 font-medium">
+                          <FileText className="w-3.5 h-3.5" /> Lihat Nota / Lampiran
+                        </a>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             </Card>
           )}
 
-          {/* TABEL DETAIL OVERRIDE LAPORAN AKHIR SETTLEMENT */}
+          {/* TABEL DETAIL OVERRIDE LAPORAN AKHIR SETTLEMENT DENGAN PT BURDEN */}
           <Card className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800">Tabel Detail Override Settlement (Editable by HR)</h3>
+              <h3 className="text-sm font-bold text-slate-800">Tabel Detail Override Settlement & Cost Center (Editable by HR)</h3>
               <Button size="sm" variant="secondary" icon={<Plus className="w-3.5 h-3.5" />} onClick={addRow}>Add Row</Button>
             </div>
             <div className="space-y-2">
@@ -169,7 +202,7 @@ export function SettlementReview({ onPrint }: { onPrint: (id: string) => void })
 
           <Card className="p-6 space-y-3">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Kategori Klaim</span>
+              <span className="text-slate-500">Kategori Klaim Akhir</span>
               <span className="font-bold text-slate-800">{category} · {formatIDR(Math.abs(diff))}</span>
             </div>
             <div className="flex gap-2 justify-end">
