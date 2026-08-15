@@ -21,8 +21,10 @@ export function PicObligo() {
   const [etollCost, setEtollCost] = useState(0);
   const [note, setNote] = useState('');
 
-  // Antrean khusus trip yang statusnya Pending PIC Obligo
-  const queue = useMemo(() => trips.filter((t) => t.status === 'Pending PIC Obligo'), [trips]);
+  // Antrean khusus trip dengan status 'Pending PIC Obligo' dari seluruh PT (tanpa batasan pt_access)
+  const queue = useMemo(() => {
+    return trips.filter((t) => t.status === 'Pending PIC Obligo');
+  }, [trips]);
 
   const startReview = (t: BizTrip) => {
     setSelected(t);
@@ -74,7 +76,7 @@ export function PicObligo() {
         <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center text-sky-600"><Truck className="w-5 h-5" /></div>
         <div>
           <h2 className="text-xl font-bold text-slate-900">Vehicle & Driver Assignment</h2>
-          <p className="text-sm text-slate-500">PIC Obligo · {queue.length} pengajuan menunggu penugasan</p>
+          <p className="text-sm text-slate-500">PIC Obligo (Lintas PT) · {queue.length} pengajuan menunggu penugasan</p>
         </div>
       </div>
 
@@ -82,18 +84,28 @@ export function PicObligo() {
         {queue.length === 0 ? (
           <EmptyState icon={<Truck className="w-6 h-6" />} title="Tidak ada pengajuan menunggu" message="Tidak ada trip yang perlu penugasan kendaraan saat ini." />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {queue.map((t) => (
-              <div key={t.id} className="rounded-xl ring-1 ring-slate-100 hover:ring-sky-200 transition p-4">
+              <div key={t.id} className="rounded-xl ring-1 ring-slate-200 hover:ring-sky-300 transition p-4 bg-white shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-sm font-bold text-slate-900">{t.requester_name}</span>
+                      <div className="flex flex-wrap gap-1">
+                        {t.company_burden.map((pt) => (
+                          <span key={pt} className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 text-xs font-black border border-sky-200">{pt}</span>
+                        ))}
+                      </div>
+                    </div>
                     <div className="text-sm font-semibold text-slate-800 truncate">{t.purpose}</div>
-                    <div className="text-xs text-slate-400 mt-0.5">{t.requester_name} · {t.origin} → {t.itinerary?.[0]?.destination ?? '-'} · {formatDate(t.departure_date)} · {daysBetween(t.departure_date, t.return_date)} hari</div>
-                    <div className="text-xs text-slate-500 mt-1">Transport: {t.transport_type} · Driver: {t.requires_driver ? 'Ya' : 'Tidak'}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">{t.origin} → {t.itinerary?.[0]?.destination ?? '-'} · {formatDate(t.departure_date)} · {daysBetween(t.departure_date, t.return_date)} hari</div>
+                    <div className="text-xs text-slate-600 mt-1 font-medium">
+                      Transport: <span className="font-bold">{t.transport_type}</span> · Butuh Kendaraan/Driver: <span className="font-bold text-sky-700">Ya</span>
+                    </div>
                   </div>
                   <StatusBadge status={t.status} />
                 </div>
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2">
                   <Button size="sm" variant="secondary" onClick={() => startReview(t)}>Assign Vehicle</Button>
                   <Button size="sm" variant="ghost" icon={<Printer className="w-3.5 h-3.5" />} onClick={() => setPrintTripId(t.id)}>Cetak PDF SPD</Button>
                 </div>
@@ -104,10 +116,13 @@ export function PicObligo() {
       </Card>
 
       {selected && (
-        <Card className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-800">Assign Vehicle & Driver</h3>
-            <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-xs">Tutup</button>
+        <Card className="p-6 space-y-4 ring-2 ring-sky-500">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Assign Vehicle & Driver</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Pemohon: {selected.requester_name} — {selected.purpose}</p>
+            </div>
+            <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-xs font-semibold">Tutup</button>
           </div>
           <div className="grid md:grid-cols-2 gap-4">
             <Field label="Pilih Kendaraan Dinas" hint="Atau ketik manual">
@@ -148,7 +163,7 @@ export function PicObligo() {
           <Field label="Catatan PIC Obligo">
             <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Catatan tambahan..." />
           </Field>
-          <div className="flex gap-2 justify-end">
+          <div className="flex gap-2 justify-end pt-2 border-t border-slate-100">
             <Button variant="secondary" size="sm" onClick={() => setSelected(null)}>Cancel</Button>
             <Button size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={submit}>Submit Assignment</Button>
           </div>
