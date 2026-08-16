@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { MapPin, FileText, RotateCcw, X, Calendar, CheckCircle2, Play } from 'lucide-react';
+import { MapPin, FileText, RotateCcw, X, Calendar, CheckCircle2, Play, CalendarClock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { Card, Button, EmptyState, StatusBadge, Modal, Textarea, Field, formatIDR } from './ui-shared';
@@ -14,6 +14,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cancelTrip, setCancelTrip] = useState<BizTrip | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  
+  const [rescheduleTrip, setRescheduleTrip] = useState<BizTrip | null>(null);
+  const [rescheduleReason, setRescheduleReason] = useState('');
 
   const myTrips = useMemo(() => trips.filter((t) => t.user_id === profile?.id), [trips, profile]);
   const selected = myTrips.find((t) => t.id === selectedId) ?? null;
@@ -77,22 +80,48 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
     }
     await updateTrip(cancelTrip.id, { 
       status: 'Rejected', 
-      cancel_reason_category: 'Cancel/Reschedule', 
+      cancel_reason_category: 'Cancel', 
       cancel_reason_detail: cancelReason, 
-      reject_reason: `Cancel/Reschedule: ${cancelReason}` 
+      reject_reason: `Cancelled by Employee: ${cancelReason}` 
     });
     await supabase.from('trip_tracking').insert({ 
       trip_id: cancelTrip.id, 
       actor_name: profile?.name ?? '', 
       actor_role: 'Employee', 
-      action: 'Cancel/Reschedule', 
+      action: 'Cancel Trip', 
       from_status: cancelTrip.status, 
       to_status: 'Rejected', 
       remarks: cancelReason 
     });
-    showToast('success', 'Pengajuan dibatalkan/dijadwalkan ulang');
+    showToast('success', 'Pengajuan berhasil dibatalkan');
     setCancelTrip(null); 
     setCancelReason('');
+    refresh();
+  };
+
+  const doReschedule = async () => {
+    if (!rescheduleTrip || !rescheduleReason.trim()) { 
+      showToast('error', 'Catatan alasan reschedule wajib diisi'); 
+      return; 
+    }
+    await updateTrip(rescheduleTrip.id, { 
+      status: 'Pending Manager Approval', 
+      cancel_reason_category: 'Reschedule', 
+      cancel_reason_detail: rescheduleReason, 
+      review_justification: `Permohonan Reschedule: ${rescheduleReason}` 
+    });
+    await supabase.from('trip_tracking').insert({ 
+      trip_id: rescheduleTrip.id, 
+      actor_name: profile?.name ?? '', 
+      actor_role: 'Employee', 
+      action: 'Reschedule Request', 
+      from_status: rescheduleTrip.status, 
+      to_status: 'Pending Manager Approval', 
+      remarks: rescheduleReason 
+    });
+    showToast('success', 'Permohonan reschedule dikirim ke Manager');
+    setRescheduleTrip(null); 
+    setRescheduleReason('');
     refresh();
   };
 
@@ -107,7 +136,10 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
               <Button size="sm" icon={<Play className="w-3.5 h-3.5" />} onClick={() => startTrip(selected)}>Start Trip</Button>
             )}
             {canCancel && (
-              <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => { setCancelTrip(selected); setCancelReason(''); }}>Cancel / Reschedule</Button>
+              <>
+                <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={() => { setRescheduleTrip(selected); setRescheduleReason(''); }}>Reschedule</Button>
+                <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => { setCancelTrip(selected); setCancelReason(''); }}>Cancel Trip</Button>
+              </>
             )}
           </div>
         </div>
@@ -148,7 +180,6 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
                   <StatusBadge status={t.status} />
                 </div>
                 <div className="mt-3 flex gap-2 flex-wrap items-center">
-                  {/* Posisi Start Trip dipindah ke paling awal */}
                   {t.status === 'Approved / Ready for Trip' && (
                     <Button size="sm" icon={<Play className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); startTrip(t); }}>Start Trip</Button>
                   )}
@@ -159,7 +190,10 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
                     <Button size="sm" variant="secondary" icon={<FileText className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); onPrint(t.id); }}>Cetak PDF</Button>
                   )}
                   {canCancel && (
-                    <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); setCancelTrip(t); setCancelReason(''); }}>Cancel / Reschedule</Button>
+                    <>
+                      <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5 text-brand-600" />} onClick={(e) => { e.stopPropagation(); setRescheduleTrip(t); setRescheduleReason(''); }}>Reschedule</Button>
+                      <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); setCancelTrip(t); setCancelReason(''); }}>Cancel Trip</Button>
+                    </>
                   )}
                 </div>
               </Card>
@@ -168,18 +202,34 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
         </div>
       )}
 
-      {/* Cancel/Reschedule modal */}
-      <Modal open={!!cancelTrip} onClose={() => setCancelTrip(null)} title="Cancel / Reschedule Request">
+      {/* Cancel modal */}
+      <Modal open={!!cancelTrip} onClose={() => setCancelTrip(null)} title="Cancel Request">
         <div className="space-y-4">
           <div className="rounded-xl bg-rose-50 ring-1 ring-rose-200 p-3 text-sm text-rose-700">
-            Anda akan membatalkan/menjadwalkan ulang: <strong>{cancelTrip?.purpose}</strong>
+            Anda akan membatalkan pengajuan: <strong>{cancelTrip?.purpose}</strong>
           </div>
-          <Field label="Catatan Alasan Pembatalan / Penjadwalan Ulang" required>
-            <Textarea rows={3} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Jelaskan alasan cancel atau reschedule..." />
+          <Field label="Catatan Alasan Pembatalan" required>
+            <Textarea rows={3} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Jelaskan alasan pembatalan..." />
           </Field>
           <div className="flex gap-2 justify-end">
             <Button variant="secondary" size="sm" onClick={() => setCancelTrip(null)}>Batal</Button>
             <Button variant="danger" size="sm" icon={<X className="w-3.5 h-3.5" />} onClick={doCancel}>Confirm Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Reschedule modal */}
+      <Modal open={!!rescheduleTrip} onClose={() => setRescheduleTrip(null)} title="Reschedule Request">
+        <div className="space-y-4">
+          <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 text-sm text-amber-800">
+            Anda akan mengajukan penjadwalan ulang (Reschedule): <strong>{rescheduleTrip?.purpose}</strong>
+          </div>
+          <Field label="Catatan & Usulan Tanggal Baru Reschedule" required>
+            <Textarea rows={3} value={rescheduleReason} onChange={(e) => setRescheduleReason(e.target.value)} placeholder="Jelaskan detail usulan jadwal baru..." />
+          </Field>
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" size="sm" onClick={() => setRescheduleTrip(null)}>Batal</Button>
+            <Button variant="primary" size="sm" icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={doReschedule}>Submit Reschedule</Button>
           </div>
         </div>
       </Modal>
