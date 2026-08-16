@@ -4,8 +4,6 @@ import {
   FileText,
   RotateCcw,
   X,
-  Calendar,
-  CheckCircle2,
   Play,
   CalendarClock,
 } from 'lucide-react';
@@ -30,17 +28,13 @@ import { supabase } from '../lib/supabase';
 
 import type { BizTrip } from '../lib/types';
 
-export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffect(() => {
-  if (!selectedTripId) return;
-
-  const tripExists = myTrips.some(
-    (t) => t.id === selectedTripId
-  );
-
-  if (tripExists) {
-    setSelectedId(selectedTripId);
-  }
-}, [selectedTripId, myTrips]); 
+export function MyTrips({
+  onPrint,
+  selectedTripId,
+}: {
+  onPrint: (id: string) => void;
+  selectedTripId?: string | null;
+}) {
   const { profile } = useAuth();
 
   const {
@@ -50,116 +44,261 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
     refresh,
   } = useApp();
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] =
+    useState<string | null>(null);
 
-  // Cancel
-  const [cancelTrip, setCancelTrip] = useState<BizTrip | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
+  /*
+   * CANCEL
+   */
+  const [cancelTrip, setCancelTrip] =
+    useState<BizTrip | null>(null);
 
-  // Reschedule
+  const [cancelReason, setCancelReason] =
+    useState('');
+
+  /*
+   * RESCHEDULE
+   */
   const [rescheduleTrip, setRescheduleTrip] =
     useState<BizTrip | null>(null);
 
-  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [rescheduleReason, setRescheduleReason] =
+    useState('');
 
-  const [newDepartureDate, setNewDepartureDate] = useState('');
-  const [newDepartureTime, setNewDepartureTime] = useState('');
-  const [newReturnDate, setNewReturnDate] = useState('');
-  const [newReturnTime, setNewReturnTime] = useState('');
+  const [newDepartureDate, setNewDepartureDate] =
+    useState('');
 
+  const [newDepartureTime, setNewDepartureTime] =
+    useState('');
+
+  const [newReturnDate, setNewReturnDate] =
+    useState('');
+
+  const [newReturnTime, setNewReturnTime] =
+    useState('');
+
+  /*
+   * TRIP MILIK PEGAWAI
+   */
   const myTrips = useMemo(
-    () => trips.filter((t) => t.user_id === profile?.id),
+    () =>
+      trips.filter(
+        (t) =>
+          t.user_id === profile?.id
+      ),
     [trips, profile]
   );
 
   const selected =
-    myTrips.find((t) => t.id === selectedId) ?? null;
+    myTrips.find(
+      (t) =>
+        t.id === selectedId
+    ) ?? null;
 
   /*
-   * Auto start trip
+   * AUTO OPEN DARI DASHBOARD
+   */
+  useEffect(() => {
+    if (!selectedTripId) {
+      return;
+    }
+
+    const tripExists =
+      myTrips.some(
+        (t) =>
+          t.id ===
+          selectedTripId
+      );
+
+    if (tripExists) {
+      setSelectedId(
+        selectedTripId
+      );
+    }
+  }, [
+    selectedTripId,
+    myTrips,
+  ]);
+
+  /*
+   * AUTO START TRIP
    */
   useEffect(() => {
     myTrips.forEach((t) => {
-      if (t.status !== 'Approved / Ready for Trip') return;
+      if (
+        t.status !==
+        'Approved / Ready for Trip'
+      ) {
+        return;
+      }
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today =
+        new Date()
+          .toISOString()
+          .slice(0, 10);
 
-      if (t.departure_date <= today) {
-        updateTrip(t.id, {
-          status: 'On Trip',
-        });
+      if (
+        t.departure_date <=
+        today
+      ) {
+        updateTrip(
+          t.id,
+          {
+            status:
+              'On Trip',
+          }
+        );
 
-        supabase.from('trip_tracking').insert({
-          trip_id: t.id,
-          actor_name: 'System',
-          actor_role: 'System',
-          action: 'Auto Start Trip',
-          from_status: 'Approved / Ready for Trip',
-          to_status: 'On Trip',
-          remarks: 'Auto-activated by date',
-        });
+        supabase
+          .from(
+            'trip_tracking'
+          )
+          .insert({
+            trip_id:
+              t.id,
+
+            actor_name:
+              'System',
+
+            actor_role:
+              'System',
+
+            action:
+              'Auto Start Trip',
+
+            from_status:
+              'Approved / Ready for Trip',
+
+            to_status:
+              'On Trip',
+
+            remarks:
+              'Auto-activated by date',
+          });
       }
     });
   }, [myTrips]);
 
   /*
-   * Re-review setelah reject
+   * REQUEST RE-REVIEW
    */
-  const requestReReview = async (t: BizTrip) => {
-    const justification = window.prompt(
-      'Tulis justifikasi permintaan Re-Review:'
-    );
+  const requestReReview =
+    async (t: BizTrip) => {
+      const justification =
+        window.prompt(
+          'Tulis justifikasi permintaan Re-Review:'
+        );
 
-    if (!justification?.trim()) return;
+      if (
+        !justification?.trim()
+      ) {
+        return;
+      }
 
-    await updateTrip(t.id, {
-      status: 'Pending Manager Approval',
-      review_justification: justification,
-      reject_reason: null,
-    });
+      await updateTrip(
+        t.id,
+        {
+          status:
+            'Pending Manager Approval',
 
-    await supabase.from('trip_tracking').insert({
-      trip_id: t.id,
-      actor_name: profile?.name ?? '',
-      actor_role: 'Employee',
-      action: 'Request Re-Review',
-      from_status: t.status,
-      to_status: 'Pending Manager Approval',
-      remarks: justification,
-    });
+          review_justification:
+            justification,
 
-    showToast('success', 'Re-Review diajukan');
+          reject_reason:
+            null,
+        }
+      );
 
-    refresh();
-  };
+      await supabase
+        .from(
+          'trip_tracking'
+        )
+        .insert({
+          trip_id:
+            t.id,
+
+          actor_name:
+            profile?.name ??
+            '',
+
+          actor_role:
+            'Employee',
+
+          action:
+            'Request Re-Review',
+
+          from_status:
+            t.status,
+
+          to_status:
+            'Pending Manager Approval',
+
+          remarks:
+            justification,
+        });
+
+      showToast(
+        'success',
+        'Re-Review diajukan'
+      );
+
+      refresh();
+    };
 
   /*
-   * Start trip manual
+   * START TRIP MANUAL
    */
-  const startTrip = async (t: BizTrip) => {
-    await updateTrip(t.id, {
-      status: 'On Trip',
-    });
+  const startTrip =
+    async (t: BizTrip) => {
+      await updateTrip(
+        t.id,
+        {
+          status:
+            'On Trip',
+        }
+      );
 
-    await supabase.from('trip_tracking').insert({
-      trip_id: t.id,
-      actor_name: profile?.name ?? '',
-      actor_role: 'Employee',
-      action: 'Start Trip',
-      from_status: 'Approved / Ready for Trip',
-      to_status: 'On Trip',
-    });
+      await supabase
+        .from(
+          'trip_tracking'
+        )
+        .insert({
+          trip_id:
+            t.id,
 
-    showToast('success', 'Trip dimulai');
+          actor_name:
+            profile?.name ??
+            '',
 
-    refresh();
-  };
+          actor_role:
+            'Employee',
+
+          action:
+            'Start Trip',
+
+          from_status:
+            'Approved / Ready for Trip',
+
+          to_status:
+            'On Trip',
+        });
+
+      showToast(
+        'success',
+        'Trip dimulai'
+      );
+
+      refresh();
+    };
 
   /*
-   * Cancel
+   * CANCEL TRIP
    */
   const doCancel = async () => {
-    if (!cancelTrip || !cancelReason.trim()) {
+    if (
+      !cancelTrip ||
+      !cancelReason.trim()
+    ) {
       showToast(
         'error',
         'Catatan alasan wajib diisi'
@@ -168,58 +307,91 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
       return;
     }
 
-    await updateTrip(cancelTrip.id, {
-      status: 'Rejected',
+    try {
+      await updateTrip(
+        cancelTrip.id,
+        {
+          status:
+            'Rejected',
 
-      cancel_reason_category: 'Cancel',
+          cancel_reason_category:
+            'Cancel',
 
-      cancel_reason_detail: cancelReason,
+          cancel_reason_detail:
+            cancelReason,
 
-      reject_reason:
-        `Cancelled by Employee: ${cancelReason}`,
-    });
+          reject_reason:
+            `Cancelled by Employee: ${cancelReason}`,
+        }
+      );
 
-    await supabase.from('trip_tracking').insert({
-      trip_id: cancelTrip.id,
+      await supabase
+        .from(
+          'trip_tracking'
+        )
+        .insert({
+          trip_id:
+            cancelTrip.id,
 
-      actor_name: profile?.name ?? '',
+          actor_name:
+            profile?.name ??
+            '',
 
-      actor_role: 'Employee',
+          actor_role:
+            'Employee',
 
-      action: 'Cancel Trip',
+          action:
+            'Cancel Trip',
 
-      from_status: cancelTrip.status,
+          from_status:
+            cancelTrip.status,
 
-      to_status: 'Rejected',
+          to_status:
+            'Rejected',
 
-      remarks: cancelReason,
-    });
+          remarks:
+            cancelReason,
+        });
 
-    showToast(
-      'success',
-      'Pengajuan berhasil dibatalkan'
-    );
+      showToast(
+        'success',
+        'Pengajuan berhasil dibatalkan'
+      );
 
-    setCancelTrip(null);
-    setCancelReason('');
+      setCancelTrip(null);
+      setCancelReason('');
 
-    refresh();
+      refresh();
+    } catch (e: any) {
+      showToast(
+        'error',
+        'Gagal membatalkan pengajuan: ' +
+          e.message
+      );
+    }
   };
 
   /*
-   * Buka modal reschedule
+   * OPEN RESCHEDULE
    */
-  const openReschedule = (trip: BizTrip) => {
-    setRescheduleTrip(trip);
+  const openReschedule = (
+    trip: BizTrip
+  ) => {
+    setRescheduleTrip(
+      trip
+    );
 
-    setRescheduleReason('');
+    setRescheduleReason(
+      ''
+    );
 
     setNewDepartureDate(
       trip.departure_date
     );
 
     setNewDepartureTime(
-      trip.departure_time ?? ''
+      trip.departure_time ??
+        ''
     );
 
     setNewReturnDate(
@@ -227,23 +399,26 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
     );
 
     setNewReturnTime(
-      trip.return_time ?? ''
+      trip.return_time ??
+        ''
     );
   };
 
   /*
-   * Helper geser tanggal itinerary
+   * HELPER RESCHEDULE
    */
   const shiftDate = (
     dateString: string,
     diffDays: number
   ) => {
-    const date = new Date(
-      `${dateString}T00:00:00`
-    );
+    const date =
+      new Date(
+        `${dateString}T00:00:00`
+      );
 
     date.setDate(
-      date.getDate() + diffDays
+      date.getDate() +
+        diffDays
     );
 
     return date
@@ -255,13 +430,15 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
     oldDate: string,
     newDate: string
   ) => {
-    const oldD = new Date(
-      `${oldDate}T00:00:00`
-    );
+    const oldD =
+      new Date(
+        `${oldDate}T00:00:00`
+      );
 
-    const newD = new Date(
-      `${newDate}T00:00:00`
-    );
+    const newD =
+      new Date(
+        `${newDate}T00:00:00`
+      );
 
     return Math.round(
       (
@@ -278,258 +455,290 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
   };
 
   /*
-   * Submit reschedule
+   * SUBMIT RESCHEDULE
+   *
+   * Tidak mengulang:
+   * Manager
+   * PIC Obligo
+   * Direksi
+   *
+   * Langsung kembali ke:
+   * Pending HR Advance Review
    */
-  const doReschedule = async () => {
-    if (
-      !rescheduleTrip ||
-      !rescheduleReason.trim() ||
-      !newDepartureDate ||
-      !newReturnDate
-    ) {
-      showToast(
-        'error',
-        'Tanggal baru dan alasan reschedule wajib diisi'
-      );
+  const doReschedule =
+    async () => {
+      if (
+        !rescheduleTrip ||
+        !rescheduleReason.trim() ||
+        !newDepartureDate ||
+        !newReturnDate
+      ) {
+        showToast(
+          'error',
+          'Tanggal baru dan alasan reschedule wajib diisi'
+        );
 
-      return;
-    }
+        return;
+      }
 
-    const newDepartureDateTime =
-      new Date(
-        `${newDepartureDate}T${newDepartureTime || '00:00'}`
-      );
+      const newDepartureDateTime =
+        new Date(
+          `${newDepartureDate}T${
+            newDepartureTime ||
+            '00:00'
+          }`
+        );
 
-    const newReturnDateTime =
-      new Date(
-        `${newReturnDate}T${newReturnTime || '23:59'}`
-      );
+      const newReturnDateTime =
+        new Date(
+          `${newReturnDate}T${
+            newReturnTime ||
+            '23:59'
+          }`
+        );
 
-    if (
-      newReturnDateTime <
-      newDepartureDateTime
-    ) {
-      showToast(
-        'error',
-        'Tanggal dan jam kembali tidak boleh sebelum tanggal dan jam berangkat'
-      );
+      if (
+        newReturnDateTime <
+        newDepartureDateTime
+      ) {
+        showToast(
+          'error',
+          'Tanggal dan jam kembali tidak boleh sebelum tanggal dan jam berangkat'
+        );
 
-      return;
-    }
+        return;
+      }
 
-    const originalItinerary =
-      rescheduleTrip.itinerary ?? [];
+      const originalItinerary =
+        rescheduleTrip.itinerary ??
+        [];
 
-    if (
-      originalItinerary.length === 0
-    ) {
-      showToast(
-        'error',
-        'Itinerary perjalanan tidak ditemukan'
-      );
+      if (
+        originalItinerary.length ===
+        0
+      ) {
+        showToast(
+          'error',
+          'Itinerary perjalanan tidak ditemukan'
+        );
 
-      return;
-    }
+        return;
+      }
 
-    const departureDiff =
-      dateDiffInDays(
-        rescheduleTrip.departure_date,
-        newDepartureDate
-      );
+      const departureDiff =
+        dateDiffInDays(
+          rescheduleTrip.departure_date,
+          newDepartureDate
+        );
 
-    /*
-     * Semua itinerary digeser
-     * berdasarkan tanggal berangkat baru.
-     *
-     * Destination / rute / agenda tetap.
-     */
-    let shiftedItinerary =
-      originalItinerary.map((leg) => ({
-        ...leg,
-
-        start_date:
-          shiftDate(
-            leg.start_date,
-            departureDiff
-          ),
-
-        end_date:
-          shiftDate(
-            leg.end_date,
-            departureDiff
-          ),
-      }));
-
-    /*
-     * Leg pertama mengikuti
-     * tanggal dan jam berangkat baru.
-     */
-    shiftedItinerary =
-      shiftedItinerary.map(
-        (leg, index) => {
-          if (index !== 0) return leg;
-
-          return {
+      let shiftedItinerary =
+        originalItinerary.map(
+          (leg) => ({
             ...leg,
 
             start_date:
-              newDepartureDate,
-
-            start_time:
-              newDepartureTime ||
-              leg.start_time,
-          };
-        }
-      );
-
-    /*
-     * Leg terakhir mengikuti
-     * tanggal dan jam kembali baru.
-     */
-    shiftedItinerary =
-      shiftedItinerary.map(
-        (leg, index) => {
-          if (
-            index !==
-            shiftedItinerary.length - 1
-          ) {
-            return leg;
-          }
-
-          return {
-            ...leg,
+              shiftDate(
+                leg.start_date,
+                departureDiff
+              ),
 
             end_date:
+              shiftDate(
+                leg.end_date,
+                departureDiff
+              ),
+          })
+        );
+
+      /*
+       * LEG PERTAMA
+       */
+      shiftedItinerary =
+        shiftedItinerary.map(
+          (leg, index) => {
+            if (
+              index !== 0
+            ) {
+              return leg;
+            }
+
+            return {
+              ...leg,
+
+              start_date:
+                newDepartureDate,
+
+              start_time:
+                newDepartureTime ||
+                leg.start_time,
+            };
+          }
+        );
+
+      /*
+       * LEG TERAKHIR
+       */
+      shiftedItinerary =
+        shiftedItinerary.map(
+          (leg, index) => {
+            if (
+              index !==
+              shiftedItinerary.length -
+                1
+            ) {
+              return leg;
+            }
+
+            return {
+              ...leg,
+
+              end_date:
+                newReturnDate,
+
+              end_time:
+                newReturnTime ||
+                leg.end_time,
+            };
+          }
+        );
+
+      const oldSchedule =
+        `${rescheduleTrip.departure_date} ` +
+        `${rescheduleTrip.departure_time ?? ''} s/d ` +
+        `${rescheduleTrip.return_date} ` +
+        `${rescheduleTrip.return_time ?? ''}`;
+
+      const newSchedule =
+        `${newDepartureDate} ` +
+        `${newDepartureTime || ''} s/d ` +
+        `${newReturnDate} ` +
+        `${newReturnTime || ''}`;
+
+      try {
+        await updateTrip(
+          rescheduleTrip.id,
+          {
+            itinerary:
+              shiftedItinerary,
+
+            departure_date:
+              newDepartureDate,
+
+            departure_time:
+              newDepartureTime ||
+              null,
+
+            return_date:
               newReturnDate,
 
-            end_time:
+            return_time:
               newReturnTime ||
-              leg.end_time,
-          };
-        }
-      );
+              null,
 
-    const oldSchedule =
-      `${rescheduleTrip.departure_date} ` +
-      `${rescheduleTrip.departure_time ?? ''} s/d ` +
-      `${rescheduleTrip.return_date} ` +
-      `${rescheduleTrip.return_time ?? ''}`;
+            total_days:
+              daysBetween(
+                newDepartureDate,
+                newReturnDate
+              ),
 
-    const newSchedule =
-      `${newDepartureDate} ` +
-      `${newDepartureTime || ''} s/d ` +
-      `${newReturnDate} ` +
-      `${newReturnTime || ''}`;
+            /*
+             * LANGSUNG HR COST REVIEW
+             */
+            status:
+              'Pending HR Advance Review',
 
-    try {
-      await updateTrip(
-        rescheduleTrip.id,
-        {
-          /*
-           * Update jadwal
-           */
-          itinerary:
-            shiftedItinerary,
+            cancel_reason_category:
+              'Reschedule',
 
-          departure_date:
-            newDepartureDate,
+            cancel_reason_detail:
+              rescheduleReason,
 
-          departure_time:
-            newDepartureTime || null,
+            review_justification:
+              `Reschedule dari ${oldSchedule} menjadi ${newSchedule}. ` +
+              `Alasan: ${rescheduleReason}`,
 
-          return_date:
-            newReturnDate,
+            /*
+             * SPD LAMA TIDAK BERLAKU
+             */
+            spd_number:
+              null,
 
-          return_time:
-            newReturnTime || null,
+            spd_issued_at:
+              null,
 
-          total_days:
-            daysBetween(
-              newDepartureDate,
-              newReturnDate
-            ),
+            approved_at:
+              null,
+          }
+        );
 
-          /*
-           * Reschedule tidak mengulang
-           * approval Manager / PIC / Direksi.
-           *
-           * Langsung ke HR Cost Review.
-           */
-          status:
-            'Pending HR Advance Review',
+        await supabase
+          .from(
+            'trip_tracking'
+          )
+          .insert({
+            trip_id:
+              rescheduleTrip.id,
 
-          cancel_reason_category:
-            'Reschedule',
+            actor_name:
+              profile?.name ??
+              '',
 
-          cancel_reason_detail:
-            rescheduleReason,
+            actor_role:
+              'Employee',
 
-          review_justification:
-            `Reschedule dari ${oldSchedule} menjadi ${newSchedule}. ` +
-            `Alasan: ${rescheduleReason}`,
+            action:
+              'Reschedule Request',
 
-          /*
-           * SPD lama tidak berlaku.
-           * HR akan hitung ulang advance
-           * dan menerbitkan SPD kembali.
-           */
-          spd_number: null,
+            from_status:
+              rescheduleTrip.status,
 
-          spd_issued_at: null,
+            to_status:
+              'Pending HR Advance Review',
 
-          approved_at: null,
-        }
-      );
+            remarks:
+              `Jadwal lama: ${oldSchedule}. ` +
+              `Jadwal baru: ${newSchedule}. ` +
+              `Alasan: ${rescheduleReason}`,
+          });
 
-      await supabase
-        .from('trip_tracking')
-        .insert({
-          trip_id:
-            rescheduleTrip.id,
+        showToast(
+          'success',
+          'Reschedule berhasil diajukan dan akan direview ulang oleh HR'
+        );
 
-          actor_name:
-            profile?.name ?? '',
+        setRescheduleTrip(
+          null
+        );
 
-          actor_role:
-            'Employee',
+        setRescheduleReason(
+          ''
+        );
 
-          action:
-            'Reschedule Request',
+        setNewDepartureDate(
+          ''
+        );
 
-          from_status:
-            rescheduleTrip.status,
+        setNewDepartureTime(
+          ''
+        );
 
-          to_status:
-            'Pending HR Advance Review',
+        setNewReturnDate(
+          ''
+        );
 
-          remarks:
-            `Jadwal lama: ${oldSchedule}. ` +
-            `Jadwal baru: ${newSchedule}. ` +
-            `Alasan: ${rescheduleReason}`,
-        });
+        setNewReturnTime(
+          ''
+        );
 
-      showToast(
-        'success',
-        'Reschedule berhasil diajukan dan akan direview ulang oleh HR'
-      );
-
-      setRescheduleTrip(null);
-      setRescheduleReason('');
-
-      setNewDepartureDate('');
-      setNewDepartureTime('');
-      setNewReturnDate('');
-      setNewReturnTime('');
-
-      refresh();
-    } catch (e: any) {
-      showToast(
-        'error',
-        'Gagal mengajukan reschedule: ' +
-          e.message
-      );
-    }
-  };
+        refresh();
+      } catch (e: any) {
+        showToast(
+          'error',
+          'Gagal mengajukan reschedule: ' +
+            e.message
+        );
+      }
+    };
 
   /*
    * DETAIL TRIP
@@ -556,13 +765,15 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
             variant="secondary"
             size="sm"
             onClick={() =>
-              setSelectedId(null)
+              setSelectedId(
+                null
+              )
             }
           >
             ← Back
           </Button>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
 
             {selected.status ===
               'Approved / Ready for Trip' && (
@@ -572,7 +783,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                   <Play className="w-3.5 h-3.5" />
                 }
                 onClick={() =>
-                  startTrip(selected)
+                  startTrip(
+                    selected
+                  )
                 }
               >
                 Start Trip
@@ -587,7 +800,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                   <CalendarClock className="w-3.5 h-3.5" />
                 }
                 onClick={() =>
-                  openReschedule(selected)
+                  openReschedule(
+                    selected
+                  )
                 }
               >
                 Reschedule
@@ -606,7 +821,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                     selected
                   );
 
-                  setCancelReason('');
+                  setCancelReason(
+                    ''
+                  );
                 }}
               >
                 Cancel Trip
@@ -614,6 +831,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
             )}
 
           </div>
+
         </div>
 
         <TripDetail
@@ -624,6 +842,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
         {selected.status ===
           'Rejected' && (
           <Card className="p-4">
+
             <Button
               size="sm"
               variant="secondary"
@@ -638,6 +857,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
             >
               Request Re-Review
             </Button>
+
           </Card>
         )}
 
@@ -658,13 +878,16 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
         </div>
 
         <div>
+
           <h2 className="text-xl font-bold text-slate-900">
             My Trips
           </h2>
 
           <p className="text-sm text-slate-500">
-            {myTrips.length} pengajuan dinas
+            {myTrips.length}{' '}
+            pengajuan dinas
           </p>
+
         </div>
 
       </div>
@@ -672,6 +895,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
       {myTrips.length === 0 ? (
 
         <Card className="p-6">
+
           <EmptyState
             icon={
               <MapPin className="w-6 h-6" />
@@ -679,6 +903,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
             title="Belum ada trip"
             message="Buat pengajuan dinas baru untuk memulai."
           />
+
         </Card>
 
       ) : (
@@ -707,7 +932,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                 <div
                   className="flex items-start justify-between gap-4"
                   onClick={() =>
-                    setSelectedId(t.id)
+                    setSelectedId(
+                      t.id
+                    )
                   }
                 >
 
@@ -718,33 +945,45 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                     </div>
 
                     <div className="text-xs text-slate-400 mt-0.5">
+
                       {t.origin}
+
                       {' → '}
+
                       {t.itinerary?.[0]
                         ?.destination ??
                         '-'}
+
                       {' · '}
+
                       {formatDate(
                         t.departure_date
                       )}
+
                       {' · '}
+
                       {daysBetween(
                         t.departure_date,
                         t.return_date
                       )}
+
                       {' hari · '}
+
                       {formatIDR(
                         Number(
                           t.cost_grand_total
                         ) || 0
                       )}
+
                     </div>
 
                     {t.employee_remarks && (
+
                       <div className="text-[11px] text-slate-500 mt-1">
                         Remarks:{' '}
                         {t.employee_remarks}
                       </div>
+
                     )}
 
                   </div>
@@ -759,6 +998,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
 
                   {t.status ===
                     'Approved / Ready for Trip' && (
+
                     <Button
                       size="sm"
                       icon={
@@ -767,15 +1007,19 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                       onClick={(e) => {
                         e.stopPropagation();
 
-                        startTrip(t);
+                        startTrip(
+                          t
+                        );
                       }}
                     >
                       Start Trip
                     </Button>
+
                   )}
 
                   {t.status ===
                     'Rejected' && (
+
                     <Button
                       size="sm"
                       variant="secondary"
@@ -785,11 +1029,14 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                       onClick={(e) => {
                         e.stopPropagation();
 
-                        requestReReview(t);
+                        requestReReview(
+                          t
+                        );
                       }}
                     >
                       Re-Review
                     </Button>
+
                   )}
 
                   {(
@@ -800,6 +1047,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                     t.status ===
                       'Completed'
                   ) && (
+
                     <Button
                       size="sm"
                       variant="secondary"
@@ -809,14 +1057,18 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                       onClick={(e) => {
                         e.stopPropagation();
 
-                        onPrint(t.id);
+                        onPrint(
+                          t.id
+                        );
                       }}
                     >
                       Cetak PDF
                     </Button>
+
                   )}
 
                   {canReschedule && (
+
                     <Button
                       size="sm"
                       variant="secondary"
@@ -826,14 +1078,18 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                       onClick={(e) => {
                         e.stopPropagation();
 
-                        openReschedule(t);
+                        openReschedule(
+                          t
+                        );
                       }}
                     >
                       Reschedule
                     </Button>
+
                   )}
 
                   {canCancel && (
+
                     <Button
                       size="sm"
                       variant="danger"
@@ -843,13 +1099,18 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
                       onClick={(e) => {
                         e.stopPropagation();
 
-                        setCancelTrip(t);
+                        setCancelTrip(
+                          t
+                        );
 
-                        setCancelReason('');
+                        setCancelReason(
+                          ''
+                        );
                       }}
                     >
                       Cancel Trip
                     </Button>
+
                   )}
 
                 </div>
@@ -865,7 +1126,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
       <Modal
         open={!!cancelTrip}
         onClose={() =>
-          setCancelTrip(null)
+          setCancelTrip(
+            null
+          )
         }
         title="Cancel Request"
       >
@@ -873,10 +1136,13 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
         <div className="space-y-4">
 
           <div className="rounded-xl bg-rose-50 ring-1 ring-rose-200 p-3 text-sm text-rose-700">
+
             Anda akan membatalkan pengajuan:{' '}
+
             <strong>
               {cancelTrip?.purpose}
             </strong>
+
           </div>
 
           <Field
@@ -903,7 +1169,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
               variant="secondary"
               size="sm"
               onClick={() =>
-                setCancelTrip(null)
+                setCancelTrip(
+                  null
+                )
               }
             >
               Batal
@@ -930,7 +1198,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
       <Modal
         open={!!rescheduleTrip}
         onClose={() =>
-          setRescheduleTrip(null)
+          setRescheduleTrip(
+            null
+          )
         }
         title="Reschedule Perjalanan"
       >
@@ -938,27 +1208,35 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
         <div className="space-y-4">
 
           <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 text-sm text-amber-800">
+
             Reschedule hanya untuk perubahan jadwal perjalanan.
             Tujuan dan rute perjalanan tidak dapat diubah.
             Jika tujuan atau rute berubah, silakan cancel dan buat pengajuan baru.
+
           </div>
 
           {rescheduleTrip && (
+
             <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
 
               Jadwal sebelumnya:
 
               <strong className="ml-1">
+
                 {formatDate(
                   rescheduleTrip.departure_date
                 )}
+
                 {' - '}
+
                 {formatDate(
                   rescheduleTrip.return_date
                 )}
+
               </strong>
 
             </div>
+
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1056,7 +1334,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
               variant="secondary"
               size="sm"
               onClick={() =>
-                setRescheduleTrip(null)
+                setRescheduleTrip(
+                  null
+                )
               }
             >
               Batal
@@ -1068,7 +1348,9 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
               icon={
                 <CalendarClock className="w-3.5 h-3.5" />
               }
-              onClick={doReschedule}
+              onClick={
+                doReschedule
+              }
             >
               Submit Reschedule
             </Button>
@@ -1082,6 +1364,3 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffe
     </div>
   );
 }
-
-void Calendar;
-void CheckCircle2;
