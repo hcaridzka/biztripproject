@@ -292,6 +292,31 @@ const dateDiffInDays = (oldDate: string, newDate: string) => {
 
   if (selected) {
     const canCancel = !['Completed', 'Rejected'].includes(selected.status);
+    const canReschedule = selected.status === 'Approved / Ready for Trip';
+    {canReschedule && (
+  <Button
+    size="sm"
+    variant="secondary"
+    icon={<CalendarClock className="w-3.5 h-3.5" />}
+    onClick={() => openReschedule(selected)}
+  >
+    Reschedule
+  </Button>
+)}
+
+{canCancel && (
+  <Button
+    size="sm"
+    variant="danger"
+    icon={<X className="w-3.5 h-3.5" />}
+    onClick={() => {
+      setCancelTrip(selected);
+      setCancelReason('');
+    }}
+  >
+    Cancel Trip
+  </Button>
+)}
     return (
       <div className="space-y-4 max-w-4xl mx-auto animate-slide-up">
         <div className="flex items-center justify-between">
@@ -317,7 +342,6 @@ const dateDiffInDays = (oldDate: string, newDate: string) => {
       </div>
     );
   }
-
   return (
     <div className="space-y-6 animate-slide-up max-w-4xl mx-auto">
       <div className="flex items-center gap-3">
@@ -334,6 +358,36 @@ const dateDiffInDays = (oldDate: string, newDate: string) => {
         <div className="space-y-2">
           {myTrips.map((t) => {
             const canCancel = !['Completed', 'Rejected'].includes(t.status);
+            const canReschedule = t.status === 'Approved / Ready for Trip';
+          {canReschedule && (
+  <Button
+    size="sm"
+    variant="secondary"
+    icon={<CalendarClock className="w-3.5 h-3.5 text-brand-600" />}
+    onClick={(e) => {
+      e.stopPropagation();
+      openReschedule(t);
+    }}
+  >
+    Reschedule
+  </Button>
+)}
+
+{canCancel && (
+  <Button
+    size="sm"
+    variant="danger"
+    icon={<X className="w-3.5 h-3.5" />}
+    onClick={(e) => {
+      e.stopPropagation();
+      setCancelTrip(t);
+      setCancelReason('');
+    }}
+  >
+    Cancel Trip
+  </Button>
+)}
+          
             return (
               <Card key={t.id} className="p-4 hover:ring-brand-200 transition cursor-pointer">
                 <div className="flex items-start justify-between gap-4" onClick={() => setSelectedId(t.id)}>
