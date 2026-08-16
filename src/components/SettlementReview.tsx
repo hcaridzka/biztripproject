@@ -253,17 +253,16 @@ export function SettlementReview({
       if (Number(row.approved) <= 0) continue;
 
       const { error } = await supabase
-        .from('settlement_claim_rows')
-        .insert({
-          trip_id: selected.id,
-          name:
-            row.description ||
-            row.category,
-          nominal: Number(row.approved) || 0,
-          claim_status: claimStatus,
-          pt_burden: row.ptBurden,
-          sort_order: i,
-        });
+  .from('settlement_claim_rows')
+  .insert({
+    id: crypto.randomUUID(),
+    trip_id: selected.id,
+    name: row.description || row.category,
+    nominal: Number(row.approved) || 0,
+    claim_status: claimStatus,
+    pt_burden: row.ptBurden,
+    sort_order: i,
+  });
 
       if (error) throw error;
     }
