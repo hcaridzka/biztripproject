@@ -678,6 +678,10 @@ export function CostCalculation({
       pettyOverride,
       externalDriverOverride,
       extraRows,
+
+      travelMatrix,
+      travelDKMatrix,
+      driverIncentive,
     ]);
 
   const defaultPT =
