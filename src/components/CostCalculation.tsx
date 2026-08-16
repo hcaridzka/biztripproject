@@ -1,4 +1,9 @@
-import { useState, useMemo, useEffect } from 'react';
+import {
+  useState,
+  useMemo,
+  useEffect,
+} from 'react';
+
 import {
   Calculator,
   Plus,
@@ -47,6 +52,14 @@ import type {
   TripCategory,
 } from '../lib/types';
 
+type CostSplitRow = {
+  id: string;
+  name: string;
+  nominal: number;
+  keterangan: string;
+  pt_burden: string;
+};
+
 export function CostCalculation({
   onPrint,
   selectedTripId,
@@ -73,8 +86,10 @@ export function CostCalculation({
   const [kpScheme, setKpScheme] =
     useState<KPScheme>('KP2');
 
-  const [schemeOverride, setSchemeOverride] =
-    useState('');
+  const [
+    schemeOverride,
+    setSchemeOverride,
+  ] = useState('');
 
   const [hotelByHR, setHotelByHR] =
     useState(true);
@@ -85,44 +100,70 @@ export function CostCalculation({
   const [manualEtoll, setManualEtoll] =
     useState(0);
 
+  /*
+   * HR ABSOLUTE OVERRIDE
+   */
   const [
-    perPersonOverride,
-    setPerPersonOverride,
-  ] = useState<Record<string, number>>({});
+    allowanceOverride,
+    setAllowanceOverride,
+  ] = useState<
+    Record<string, number>
+  >({});
 
   const [
     hotelOverride,
     setHotelOverride,
-  ] = useState<Record<string, number>>({});
+  ] = useState<
+    Record<string, number>
+  >({});
 
-  const [spdNumber, setSpdNumber] =
-    useState('');
+  const [
+    driverOverride,
+    setDriverOverride,
+  ] = useState<
+    Record<string, number>
+  >({});
 
-  const [hrNotes, setHrNotes] =
-    useState('');
+  const [
+    pettyOverride,
+    setPettyOverride,
+  ] = useState<
+    Record<string, number>
+  >({});
 
   /*
-   * Tabel B:
-   * Rangkuman Pembiayaan
-   * Split Cost Center & Beban Perusahaan
+   * Driver dari PIC Obligo
+   * yang tidak menjadi participant.
+   */
+  const [
+    externalDriverOverride,
+    setExternalDriverOverride,
+  ] = useState<number | null>(
+    null
+  );
+
+  const [
+    spdNumber,
+    setSpdNumber,
+  ] = useState('');
+
+  const [
+    hrNotes,
+    setHrNotes,
+  ] = useState('');
+
+  /*
+   * TABLE B
    */
   const [
     extraRows,
     setExtraRows,
-  ] = useState<
-    {
-      id: string;
-      name: string;
-      nominal: number;
-      keterangan: string;
-      pt_burden: string;
-    }[]
-  >([]);
+  ] = useState<CostSplitRow[]>(
+    []
+  );
 
   /*
-   * Antrean HR hanya trip yang sudah
-   * melewati Manager / PIC Obligo / Direksi
-   * dan menunggu Cost & Advance Review.
+   * QUEUE
    */
   const queue = useMemo(
     () =>
@@ -135,9 +176,11 @@ export function CostCalculation({
   );
 
   /*
-   * Buka Cost & Advance Review
+   * START REVIEW
    */
-  const startReview = (t: BizTrip) => {
+  const startReview = (
+    t: BizTrip
+  ) => {
     setSelected(t);
 
     const activeScheme =
@@ -146,9 +189,13 @@ export function CostCalculation({
         t.itinerary ?? []
       );
 
-    setKpScheme(activeScheme);
+    setKpScheme(
+      activeScheme
+    );
 
-    setSchemeOverride('');
+    setSchemeOverride(
+      ''
+    );
 
     setTotalDays(
       t.total_days ||
@@ -159,22 +206,122 @@ export function CostCalculation({
     );
 
     setManualFuel(
-      Number(t.fuel_cost) || 0
+      Number(
+        t.fuel_cost
+      ) || 0
     );
 
     setManualEtoll(
-      Number(t.etoll_cost) || 0
+      Number(
+        t.etoll_cost
+      ) || 0
     );
 
-    setPerPersonOverride({});
-
-    setHotelOverride({});
+    const saved =
+      t.cost_data ?? {};
 
     /*
-     * Auto & editable nomor SPD
-     * format existing:
-     * [SKEMA]-[NO]/[NAMA PEGAWAI]
+     * Default:
+     * HR yang menentukan
+     * apakah hotel dipesankan.
      */
+    setHotelByHR(
+      saved.hotelByHR ??
+        true
+    );
+
+    const savedPP =
+      Array.isArray(
+        saved.perParticipant
+      )
+        ? saved.perParticipant
+        : [];
+
+    const allowanceMap:
+      Record<string, number> =
+        {};
+
+    const hotelMap:
+      Record<string, number> =
+        {};
+
+    const driverMap:
+      Record<string, number> =
+        {};
+
+    const pettyMap:
+      Record<string, number> =
+        {};
+
+    savedPP.forEach(
+      (p: any) => {
+        if (!p?.name) {
+          return;
+        }
+
+        if (
+          p.total !== undefined
+        ) {
+          allowanceMap[p.name] =
+            Number(
+              p.total
+            ) || 0;
+        }
+
+        if (
+          p.hotel !== undefined
+        ) {
+          hotelMap[p.name] =
+            Number(
+              p.hotel
+            ) || 0;
+        }
+
+        if (
+          p.driver !== undefined
+        ) {
+          driverMap[p.name] =
+            Number(
+              p.driver
+            ) || 0;
+        }
+
+        if (
+          p.pettyCash !== undefined
+        ) {
+          pettyMap[p.name] =
+            Number(
+              p.pettyCash
+            ) || 0;
+        }
+      }
+    );
+
+    setAllowanceOverride(
+      allowanceMap
+    );
+
+    setHotelOverride(
+      hotelMap
+    );
+
+    setDriverOverride(
+      driverMap
+    );
+
+    setPettyOverride(
+      pettyMap
+    );
+
+    setExternalDriverOverride(
+      saved.externalDriverIncentive !==
+        undefined
+        ? Number(
+            saved.externalDriverIncentive
+          ) || 0
+        : null
+    );
+
     const defaultSpd =
       generateSpdNumber(
         activeScheme,
@@ -183,7 +330,8 @@ export function CostCalculation({
       );
 
     setSpdNumber(
-      t.spd_number ?? defaultSpd
+      t.spd_number ??
+        defaultSpd
     );
 
     setHrNotes(
@@ -191,202 +339,337 @@ export function CostCalculation({
     );
 
     /*
-     * Ambil existing split cost center
-     * dari database jika sebelumnya
-     * sudah pernah disimpan.
+     * LOAD TABLE B
      */
     const existing =
       disburseRows.filter(
         (d) =>
-          d.trip_id === t.id
+          d.trip_id ===
+          t.id
       );
 
     setExtraRows(
       existing.length > 0
-        ? existing.map((d) => ({
-            id: d.id,
-            name: d.name,
-            nominal:
-              Number(d.nominal),
-            keterangan:
-              d.component_note,
-            pt_burden:
-              d.pt_burden,
-          }))
+        ? existing.map(
+            (d) => ({
+              id: d.id,
+
+              name:
+                d.name,
+
+              nominal:
+                Number(
+                  d.nominal
+                ),
+
+              keterangan:
+                d.component_note,
+
+              pt_burden:
+                d.pt_burden,
+            })
+          )
         : []
     );
   };
 
   /*
-   * NAVIGATION AUTO-OPEN
-   *
-   * Jika HR masuk dari:
-   * Dashboard / Approval Queue
-   * dengan selectedTripId,
-   * otomatis buka trip tersebut.
+   * AUTO OPEN
    */
   useEffect(() => {
-    if (!selectedTripId) return;
+    if (!selectedTripId) {
+      return;
+    }
 
-    const trip = trips.find(
-      (t) =>
-        t.id === selectedTripId &&
-        t.status ===
-          'Pending HR Advance Review'
-    );
+    if (
+      selected?.id ===
+      selectedTripId
+    ) {
+      return;
+    }
+
+    const trip =
+      trips.find(
+        (t) =>
+          t.id ===
+            selectedTripId &&
+          t.status ===
+            'Pending HR Advance Review'
+      );
 
     if (trip) {
-      startReview(trip);
+      startReview(
+        trip
+      );
     }
-  }, [selectedTripId, trips]);
-
-  /*
-   * Perhitungan biaya
-   */
-  const cost = useMemo(() => {
-    if (!selected) return null;
-
-    const effectiveTripCategory:
-      TripCategory =
-        schemeOverride.startsWith(
-          'within_city'
-        ) ||
-        schemeOverride ===
-          'luar_kota'
-          ? (
-              schemeOverride as TripCategory
-            )
-          : selected.trip_category;
-
-    const effectiveKpScheme:
-      KPScheme = (
-        [
-          'KP1',
-          'KP2',
-          'KPO',
-        ].includes(
-          schemeOverride
-        )
-          ? schemeOverride
-          : kpScheme
-      ) as KPScheme;
-
-    const c = computeCost({
-      participants:
-        selected.participants ?? [],
-
-      days:
-        totalDays,
-
-      itinerary:
-        selected.itinerary ?? [],
-
-      origin:
-        selected.origin,
-
-      tripCategory:
-        effectiveTripCategory,
-
-      kpScheme:
-        effectiveKpScheme,
-
-      needsDriver:
-        selected.needs_driver,
-
-      fuelCost:
-        manualFuel,
-
-      etollCost:
-        manualEtoll,
-
-      hotelByHR,
-    });
-
-    /*
-     * Override nominal per pegawai
-     * oleh HR di Tabel A.
-     */
-    const adjustedPP =
-      c.perParticipant.map(
-        (pp) => ({
-          ...pp,
-
-          total:
-            perPersonOverride[
-              pp.name
-            ] ?? pp.total,
-
-          hotel:
-            hotelOverride[
-              pp.name
-            ] ?? pp.hotel,
-        })
-      );
-
-    const perDiemTotal =
-      adjustedPP.reduce(
-        (s, p) =>
-          s + p.total,
-        0
-      );
-
-    const hotelTotal =
-      adjustedPP.reduce(
-        (s, p) =>
-          s + p.hotel,
-        0
-      );
-
-    const extraTotal =
-      extraRows.reduce(
-        (s, r) =>
-          s + r.nominal,
-        0
-      );
-
-    /*
-     * Grand Total Advance
-     * diambil dari Tabel A.
-     */
-    const grandTotal =
-      perDiemTotal +
-      hotelTotal +
-      c.driverTotal +
-      c.pettyCashTotal +
-      manualFuel +
-      manualEtoll;
-
-    return {
-      ...c,
-
-      perParticipant:
-        adjustedPP,
-
-      perDiemTotal,
-
-      hotelTotal,
-
-      grandTotal,
-
-      extraTotal,
-
-      effectiveKpScheme,
-    };
   }, [
-    selected,
-    schemeOverride,
-    kpScheme,
-    totalDays,
-    manualFuel,
-    manualEtoll,
-    hotelByHR,
-    perPersonOverride,
-    hotelOverride,
-    extraRows,
+    selectedTripId,
+    trips,
+    selected?.id,
   ]);
 
   /*
-   * Copy Tabel A → Tabel B
+   * CALCULATION
+   */
+  const cost =
+    useMemo(() => {
+      if (!selected) {
+        return null;
+      }
+
+      const effectiveTripCategory:
+        TripCategory =
+          schemeOverride.startsWith(
+            'within_city'
+          ) ||
+          schemeOverride ===
+            'luar_kota'
+            ? (
+                schemeOverride as TripCategory
+              )
+            : selected.trip_category;
+
+      const effectiveKpScheme:
+        KPScheme = (
+          [
+            'KP1',
+            'KP2',
+            'KPO',
+          ].includes(
+            schemeOverride
+          )
+            ? schemeOverride
+            : kpScheme
+        ) as KPScheme;
+
+      /*
+       * MATRIX DEFAULT
+       */
+      const base =
+        computeCost({
+          participants:
+            selected.participants ??
+            [],
+
+          days:
+            totalDays,
+
+          itinerary:
+            selected.itinerary ??
+            [],
+
+          origin:
+            selected.origin,
+
+          tripCategory:
+            effectiveTripCategory,
+
+          kpScheme:
+            effectiveKpScheme,
+
+          needsDriver:
+            selected.needs_driver,
+
+          /*
+           * Driver distance incentive.
+           */
+          totalDistance:
+            selected.total_distance ??
+            'none',
+
+          fuelCost:
+            manualFuel,
+
+          etollCost:
+            manualEtoll,
+
+          hotelByHR,
+        });
+
+      /*
+       * DRIVER EXTERNAL
+       */
+      const participantDriverBase =
+        base.perParticipant.reduce(
+          (sum, pp) =>
+            sum +
+            Number(
+              pp.driver || 0
+            ),
+          0
+        );
+
+      const baseExternalDriver =
+        Math.max(
+          0,
+          base.driverTotal -
+            participantDriverBase
+        );
+
+      /*
+       * APPLY HR OVERRIDE
+       */
+      const perParticipant =
+        base.perParticipant.map(
+          (pp) => {
+            const allowance =
+              allowanceOverride[
+                pp.name
+              ] ??
+              pp.total;
+
+            const hotel =
+              hotelByHR
+                ? 0
+                : (
+                    hotelOverride[
+                      pp.name
+                    ] ??
+                    pp.hotel
+                  );
+
+            const driver =
+              driverOverride[
+                pp.name
+              ] ??
+              pp.driver;
+
+            const pettyCash =
+              pettyOverride[
+                pp.name
+              ] ??
+              pp.pettyCash;
+
+            return {
+              ...pp,
+
+              total:
+                Number(
+                  allowance
+                ) || 0,
+
+              hotel:
+                Number(
+                  hotel
+                ) || 0,
+
+              driver:
+                Number(
+                  driver
+                ) || 0,
+
+              pettyCash:
+                Number(
+                  pettyCash
+                ) || 0,
+            };
+          }
+        );
+
+      const perDiemTotal =
+        perParticipant.reduce(
+          (sum, pp) =>
+            sum +
+            pp.total,
+          0
+        );
+
+      const hotelTotal =
+        perParticipant.reduce(
+          (sum, pp) =>
+            sum +
+            pp.hotel,
+          0
+        );
+
+      const participantDriverTotal =
+        perParticipant.reduce(
+          (sum, pp) =>
+            sum +
+            pp.driver,
+          0
+        );
+
+      const externalDriverIncentive =
+        externalDriverOverride ??
+        baseExternalDriver;
+
+      const driverTotal =
+        participantDriverTotal +
+        externalDriverIncentive;
+
+      const pettyCashTotal =
+        perParticipant.reduce(
+          (sum, pp) =>
+            sum +
+            pp.pettyCash,
+          0
+        );
+
+      const grandTotal =
+        perDiemTotal +
+        hotelTotal +
+        driverTotal +
+        pettyCashTotal +
+        manualFuel +
+        manualEtoll;
+
+      const extraTotal =
+        extraRows.reduce(
+          (sum, row) =>
+            sum +
+            Number(
+              row.nominal || 0
+            ),
+          0
+        );
+
+      return {
+        ...base,
+
+        perParticipant,
+
+        perDiemTotal,
+
+        hotelTotal,
+
+        driverTotal,
+
+        pettyCashTotal,
+
+        grandTotal,
+
+        extraTotal,
+
+        externalDriverIncentive,
+
+        effectiveKpScheme,
+
+        effectiveTripCategory,
+      };
+    }, [
+      selected,
+      schemeOverride,
+      kpScheme,
+      totalDays,
+      manualFuel,
+      manualEtoll,
+      hotelByHR,
+      allowanceOverride,
+      hotelOverride,
+      driverOverride,
+      pettyOverride,
+      externalDriverOverride,
+      extraRows,
+    ]);
+
+  const defaultPT =
+    selected
+      ?.company_burden?.[0] ||
+    PT_OPTIONS[0];
+
+  /*
+   * TABLE A → TABLE B
    */
   const generateCostSplitFromTableA =
     () => {
@@ -397,21 +680,15 @@ export function CostCalculation({
         return;
       }
 
-      const rows: {
-        id: string;
-        name: string;
-        nominal: number;
-        keterangan: string;
-        pt_burden: string;
-      }[] = [];
+      const rows:
+        CostSplitRow[] =
+        [];
 
-      /*
-       * Tunjangan & petty cash
-       * per orang
-       */
       cost.perParticipant.forEach(
         (pp) => {
-          if (pp.total > 0) {
+          if (
+            pp.total > 0
+          ) {
             rows.push({
               id: uid(),
 
@@ -422,10 +699,50 @@ export function CostCalculation({
                 pp.total,
 
               keterangan:
-                'Tunjangan',
+                'Tunjangan Perjalanan Dinas',
 
               pt_burden:
-                PT_OPTIONS[0],
+                defaultPT,
+            });
+          }
+
+          if (
+            pp.hotel > 0
+          ) {
+            rows.push({
+              id: uid(),
+
+              name:
+                pp.name,
+
+              nominal:
+                pp.hotel,
+
+              keterangan:
+                'Akomodasi',
+
+              pt_burden:
+                defaultPT,
+            });
+          }
+
+          if (
+            pp.driver > 0
+          ) {
+            rows.push({
+              id: uid(),
+
+              name:
+                pp.name,
+
+              nominal:
+                pp.driver,
+
+              keterangan:
+                'Insentif Jarak Driver',
+
+              pt_burden:
+                defaultPT,
             });
           }
 
@@ -445,180 +762,167 @@ export function CostCalculation({
                 'Pettycash',
 
               pt_burden:
-                PT_OPTIONS[0],
+                defaultPT,
             });
           }
         }
       );
 
       /*
-       * Operasional kendaraan
+       * Driver assigned PIC,
+       * bukan participant.
        */
       if (
-        manualFuel +
-          manualEtoll >
+        cost.externalDriverIncentive >
         0
       ) {
         rows.push({
           id: uid(),
 
           name:
-            selected
-              .requester_name,
+            selected.obligo_driver_name ||
+            'Driver',
 
           nominal:
-            manualFuel +
-            manualEtoll,
+            cost.externalDriverIncentive,
 
           keterangan:
-            'BBM & E-Toll',
+            'Insentif Jarak Driver',
 
           pt_burden:
-            PT_OPTIONS[0],
+            defaultPT,
         });
       }
 
-      setExtraRows(rows);
+      if (
+        manualFuel > 0
+      ) {
+        rows.push({
+          id: uid(),
+
+          name:
+            selected.requester_name,
+
+          nominal:
+            manualFuel,
+
+          keterangan:
+            'BBM',
+
+          pt_burden:
+            defaultPT,
+        });
+      }
+
+      if (
+        manualEtoll > 0
+      ) {
+        rows.push({
+          id: uid(),
+
+          name:
+            selected.requester_name,
+
+          nominal:
+            manualEtoll,
+
+          keterangan:
+            'E-Toll',
+
+          pt_burden:
+            defaultPT,
+        });
+      }
+
+      setExtraRows(
+        rows
+      );
 
       showToast(
         'info',
-        'Data Tabel A berhasil disalin ke Tabel B. Silakan pecah nominal & atur Beban Perusahaan.'
+        'Table A berhasil disalin ke Table B. Silakan sesuaikan pemecahan cost center.'
       );
     };
 
-  /*
-   * Tabel B helpers
-   */
-  const addExtraRow = () =>
-    setExtraRows((r) => [
-      ...r,
-      {
-        id: uid(),
+  const addExtraRow =
+    () => {
+      setExtraRows(
+        (rows) => [
+          ...rows,
 
-        name:
-          selected
-            ?.requester_name ??
-          '',
+          {
+            id: uid(),
 
-        nominal: 0,
+            name:
+              selected
+                ?.requester_name ??
+              '',
 
-        keterangan: '',
+            nominal: 0,
 
-        pt_burden:
-          PT_OPTIONS[0],
-      },
-    ]);
+            keterangan:
+              '',
+
+            pt_burden:
+              defaultPT,
+          },
+        ]
+      );
+    };
 
   const updateExtraRow = (
     id: string,
-
-    patch: Partial<{
-      name: string;
-      nominal: number;
-      keterangan: string;
-      pt_burden: string;
-    }>
-  ) =>
-    setExtraRows((r) =>
-      r.map((x) =>
-        x.id === id
-          ? {
-              ...x,
-              ...patch,
-            }
-          : x
-      )
+    patch: Partial<CostSplitRow>
+  ) => {
+    setExtraRows(
+      (rows) =>
+        rows.map(
+          (row) =>
+            row.id === id
+              ? {
+                  ...row,
+                  ...patch,
+                }
+              : row
+        )
     );
+  };
 
   const removeExtraRow = (
     id: string
-  ) =>
-    setExtraRows((r) =>
-      r.filter(
-        (x) =>
-          x.id !== id
-      )
+  ) => {
+    setExtraRows(
+      (rows) =>
+        rows.filter(
+          (row) =>
+            row.id !== id
+        )
     );
+  };
 
   /*
-   * FINAL APPROVE HR
-   *
-   * Ini satu-satunya proses
-   * yang mengubah:
-   *
-   * Pending HR Advance Review
-   * →
-   * Approved / Ready for Trip
+   * SAVE COST CENTER
    */
-  const approve = async () => {
-    if (
-      !selected ||
-      !cost
-    ) {
-      return;
-    }
+  const persistCostSplit =
+    async (
+      tripId: string
+    ) => {
+      const deleteResult =
+        await supabase
+          .from(
+            'disburse_rows'
+          )
+          .delete()
+          .eq(
+            'trip_id',
+            tripId
+          );
 
-    try {
-      await updateTrip(
-        selected.id,
-        {
-          spd_number:
-            spdNumber,
-
-          hr_notes:
-            hrNotes || null,
-
-          kp_scheme:
-            cost.effectiveKpScheme,
-
-          total_days:
-            totalDays,
-
-          cost_grand_total:
-            cost.grandTotal,
-
-          fuel_cost:
-            manualFuel,
-
-          etoll_cost:
-            manualEtoll,
-
-          cost_data: {
-            perParticipant:
-              cost.perParticipant,
-
-            extraRows,
-
-            pettyCashHolder:
-              cost.pettyCashHolder,
-          },
-
-          status:
-            'Approved / Ready for Trip',
-
-          approved_at:
-            new Date()
-              .toISOString(),
-
-          spd_issued_at:
-            new Date()
-              .toISOString(),
-        }
-      );
-
-      /*
-       * Simpan Tabel B
-       * ke disburse_rows
-       */
-      await supabase
-        .from(
-          'disburse_rows'
-        )
-        .delete()
-        .eq(
-          'trip_id',
-          selected.id
-        );
+      if (
+        deleteResult.error
+      ) {
+        throw deleteResult.error;
+      }
 
       for (
         let i = 0;
@@ -626,87 +930,365 @@ export function CostCalculation({
         extraRows.length;
         i++
       ) {
-        const r =
+        const row =
           extraRows[i];
 
-        await supabase
-          .from(
-            'disburse_rows'
-          )
-          .insert({
-            id: r.id,
+        const result =
+          await supabase
+            .from(
+              'disburse_rows'
+            )
+            .insert({
+              id:
+                row.id,
 
-            trip_id:
-              selected.id,
+              trip_id:
+                tripId,
 
-            name:
-              r.name,
+              name:
+                row.name,
 
-            nominal:
-              r.nominal,
+              nominal:
+                Number(
+                  row.nominal
+                ) || 0,
 
-            component_note:
-              r.keterangan,
+              component_note:
+                row.keterangan,
 
-            pt_burden:
-              r.pt_burden,
+              pt_burden:
+                row.pt_burden,
 
-            sort_order:
-              i,
-          });
+              sort_order:
+                i,
+            });
+
+        if (
+          result.error
+        ) {
+          throw result.error;
+        }
+      }
+    };
+
+  /*
+   * COST DATA
+   *
+   * Pemisahan ini akan kita pakai
+   * untuk Settlement.
+   */
+  const buildCostData =
+    () => {
+      if (!cost) {
+        return null;
+      }
+
+      return {
+        hotelByHR,
+
+        totalDistance:
+          selected
+            ?.total_distance ??
+          'none',
+
+        scheme:
+          cost.effectiveKpScheme,
+
+        perParticipant:
+          cost.perParticipant,
+
+        externalDriverIncentive:
+          cost.externalDriverIncentive,
+
+        pettyCashHolder:
+          cost.pettyCashHolder,
+
+        fuel:
+          manualFuel,
+
+        etoll:
+          manualEtoll,
+
+        totals: {
+          allowance:
+            cost.perDiemTotal,
+
+          accommodation:
+            cost.hotelTotal,
+
+          driverIncentive:
+            cost.driverTotal,
+
+          pettyCash:
+            cost.pettyCashTotal,
+
+          fuel:
+            manualFuel,
+
+          etoll:
+            manualEtoll,
+
+          grandTotal:
+            cost.grandTotal,
+        },
+
+        /*
+         * Settlement tidak akan
+         * memperhitungkan tunjangan
+         * dan insentif sebagai biaya aktual.
+         */
+        nonAccountable: {
+          allowance:
+            cost.perDiemTotal,
+
+          driverIncentive:
+            cost.driverTotal,
+
+          total:
+            cost.perDiemTotal +
+            cost.driverTotal,
+        },
+
+        accountable: {
+          accommodation:
+            cost.hotelTotal,
+
+          pettyCash:
+            cost.pettyCashTotal,
+
+          fuel:
+            manualFuel,
+
+          etoll:
+            manualEtoll,
+
+          total:
+            cost.hotelTotal +
+            cost.pettyCashTotal +
+            manualFuel +
+            manualEtoll,
+        },
+
+        extraRows,
+      };
+    };
+
+  /*
+   * SAVE DRAFT
+   */
+  const saveDraft =
+    async () => {
+      if (
+        !selected ||
+        !cost
+      ) {
+        return;
+      }
+
+      try {
+        await updateTrip(
+          selected.id,
+          {
+            spd_number:
+              spdNumber,
+
+            hr_notes:
+              hrNotes ||
+              null,
+
+            kp_scheme:
+              cost.effectiveKpScheme,
+
+            total_days:
+              totalDays,
+
+            cost_grand_total:
+              cost.grandTotal,
+
+            fuel_cost:
+              manualFuel,
+
+            etoll_cost:
+              manualEtoll,
+
+            cost_data:
+              buildCostData(),
+          }
+        );
+
+        await persistCostSplit(
+          selected.id
+        );
+
+        showToast(
+          'success',
+          'Draft Cost & Advance berhasil disimpan'
+        );
+
+        refresh();
+      } catch (e: any) {
+        showToast(
+          'error',
+          'Gagal menyimpan draft: ' +
+            e.message
+        );
+      }
+    };
+
+  /*
+   * FINAL APPROVE
+   */
+  const approve =
+    async () => {
+      if (
+        !selected ||
+        !cost
+      ) {
+        return;
+      }
+
+      if (
+        !spdNumber.trim()
+      ) {
+        showToast(
+          'error',
+          'Nomor SPD wajib diisi'
+        );
+
+        return;
       }
 
       /*
-       * Tracking
+       * Table B wajib balance
+       * dengan angka final Table A.
        */
-      await supabase
-        .from(
-          'trip_tracking'
-        )
-        .insert({
-          trip_id:
-            selected.id,
+      const difference =
+        Math.abs(
+          cost.extraTotal -
+            cost.grandTotal
+        );
 
-          actor_name:
-            profile?.name ??
-            '',
+      if (
+        difference >
+        0.01
+      ) {
+        showToast(
+          'error',
+          `Total Table B (${formatIDR(
+            cost.extraTotal
+          )}) harus sama dengan Grand Total Advance (${formatIDR(
+            cost.grandTotal
+          )}).`
+        );
 
-          actor_role:
-            'HR Manager',
+        return;
+      }
 
-          action:
-            'HR Advance Approved -> Ready for Trip',
+      try {
+        await persistCostSplit(
+          selected.id
+        );
 
-          from_status:
-            'Pending HR Advance Review',
+        const now =
+          new Date()
+            .toISOString();
 
-          to_status:
-            'Approved / Ready for Trip',
+        await updateTrip(
+          selected.id,
+          {
+            spd_number:
+              spdNumber,
 
-          remarks:
-            hrNotes ||
-            'Auto-approved by HR',
-        });
+            hr_notes:
+              hrNotes ||
+              null,
 
-      showToast(
-        'success',
-        'Advance disetujui. SPD siap dicetak.'
-      );
+            kp_scheme:
+              cost.effectiveKpScheme,
 
-      setSelected(null);
+            total_days:
+              totalDays,
 
-      refresh();
-    } catch (e: any) {
-      showToast(
-        'error',
-        'Gagal approve: ' +
-          e.message
-      );
-    }
-  };
+            cost_grand_total:
+              cost.grandTotal,
+
+            fuel_cost:
+              manualFuel,
+
+            etoll_cost:
+              manualEtoll,
+
+            cost_data:
+              buildCostData(),
+
+            status:
+              'Approved / Ready for Trip',
+
+            approved_at:
+              now,
+
+            spd_issued_at:
+              now,
+          }
+        );
+
+        const tracking =
+          await supabase
+            .from(
+              'trip_tracking'
+            )
+            .insert({
+              trip_id:
+                selected.id,
+
+              actor_name:
+                profile?.name ??
+                '',
+
+              actor_role:
+                'HR Manager',
+
+              action:
+                'HR Cost & Advance Approved',
+
+              from_status:
+                'Pending HR Advance Review',
+
+              to_status:
+                'Approved / Ready for Trip',
+
+              remarks:
+                hrNotes ||
+                'Cost & Advance Review completed',
+            });
+
+        if (
+          tracking.error
+        ) {
+          throw tracking.error;
+        }
+
+        showToast(
+          'success',
+          'Cost & Advance disetujui. Trip siap dijalankan.'
+        );
+
+        setSelected(
+          null
+        );
+
+        refresh();
+      } catch (e: any) {
+        showToast(
+          'error',
+          'Gagal approve: ' +
+            e.message
+        );
+      }
+    };
 
   return (
-    <div className="space-y-6 animate-slide-up max-w-5xl mx-auto">
+    <div className="space-y-6 animate-slide-up max-w-6xl mx-auto">
 
       {/* HEADER */}
       <div className="flex items-center gap-3">
@@ -716,81 +1298,100 @@ export function CostCalculation({
         </div>
 
         <div>
+
           <h2 className="text-xl font-bold text-slate-900">
             Cost & Advance Review
           </h2>
 
           <p className="text-sm text-slate-500">
-            HR Manager · Hak Edit Absolut ·{' '}
+            HR Manager · Review & Override ·{' '}
             {queue.length}{' '}
             pengajuan menunggu
           </p>
+
         </div>
 
       </div>
 
-      {/* QUEUE HR */}
+      {/* QUEUE */}
       {!selected && (
         <Card className="p-6">
 
-          {queue.length === 0 ? (
+          {queue.length ===
+          0 ? (
 
             <EmptyState
               icon={
                 <Calculator className="w-6 h-6" />
               }
               title="Tidak ada pengajuan menunggu"
-              message="Tidak ada trip yang menunggu review advance dari HR."
+              message="Tidak ada trip yang menunggu Cost & Advance Review."
             />
 
           ) : (
 
             <div className="space-y-2">
 
-              {queue.map((t) => (
+              {queue.map(
+                (t) => (
 
-                <div
-                  key={t.id}
-                  className="rounded-xl ring-1 ring-slate-100 hover:ring-brand-200 transition p-4 flex items-center justify-between bg-white shadow-sm"
-                >
+                  <div
+                    key={t.id}
+                    className="rounded-xl ring-1 ring-slate-100 hover:ring-brand-200 transition p-4 flex items-center justify-between gap-4 bg-white shadow-sm"
+                  >
 
-                  <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0">
 
-                    <div className="text-base font-extrabold text-slate-900">
-                      {t.requester_name}
+                      <div className="text-base font-extrabold text-slate-900">
+                        {t.requester_name}
+                      </div>
+
+                      <div className="text-sm font-semibold text-slate-700 truncate mt-0.5">
+                        {t.purpose}
+                      </div>
+
+                      <div className="text-xs text-slate-400 mt-1">
+
+                        {formatDate(
+                          t.departure_date
+                        )}
+
+                        {' · '}
+
+                        {daysBetween(
+                          t.departure_date,
+                          t.return_date
+                        )}
+
+                        {' hari · '}
+
+                        {t.total_distance ===
+                        'gt400'
+                          ? '>400 KM'
+                          : t.total_distance ===
+                            'gt200'
+                          ? '>200 KM'
+                          : 'Jarak normal'}
+
+                      </div>
+
                     </div>
 
-                    <div className="text-sm font-semibold text-slate-700 truncate mt-0.5">
-                      {t.purpose}
-                    </div>
-
-                    <div className="text-xs text-slate-400 mt-1">
-                      {formatDate(
-                        t.departure_date
-                      )}
-                      {' · '}
-                      Estimasi:{' '}
-                      {formatIDR(
-                        Number(
-                          t.cost_grand_total
-                        ) || 0
-                      )}
-                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        startReview(
+                          t
+                        )
+                      }
+                    >
+                      Review & Calculate
+                    </Button>
 
                   </div>
 
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      startReview(t)
-                    }
-                  >
-                    Review Advance
-                  </Button>
-
-                </div>
-
-              ))}
+                )
+              )}
 
             </div>
           )}
@@ -798,23 +1399,35 @@ export function CostCalculation({
         </Card>
       )}
 
-      {/* HR REVIEW */}
-      {selected && cost && (
+      {/* REVIEW */}
+      {selected &&
+        cost && (
         <>
 
-          {/* CONTROL PANEL */}
-          <Card className="p-6 space-y-4">
+          {/* CONTROL */}
+          <Card className="p-6 space-y-5">
 
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
 
-              <h3 className="text-base font-bold text-slate-900">
-                HR Override Editor — Pegawai Pemohon:{' '}
-                {selected.requester_name}
-              </h3>
+              <div>
+
+                <h3 className="text-base font-bold text-slate-900">
+                  HR Cost Override
+                </h3>
+
+                <p className="text-xs text-slate-500 mt-1">
+                  {selected.requester_name}
+                  {' · '}
+                  {selected.purpose}
+                </p>
+
+              </div>
 
               <button
                 onClick={() =>
-                  setSelected(null)
+                  setSelected(
+                    null
+                  )
                 }
                 className="text-slate-400 hover:text-slate-600 text-xs font-semibold"
               >
@@ -826,10 +1439,13 @@ export function CostCalculation({
             <div className="grid md:grid-cols-3 gap-4">
 
               <Field label="Total Hari Dinas">
+
                 <Input
                   type="number"
                   min={1}
-                  value={totalDays}
+                  value={
+                    totalDays
+                  }
                   onChange={(e) =>
                     setTotalDays(
                       parseInt(
@@ -838,12 +1454,17 @@ export function CostCalculation({
                     )
                   }
                 />
+
               </Field>
 
-              <Field label="BBM Manual (Rp)">
+              <Field label="BBM (Rp)">
+
                 <Input
                   type="number"
-                  value={manualFuel}
+                  min={0}
+                  value={
+                    manualFuel
+                  }
                   onChange={(e) =>
                     setManualFuel(
                       parseFloat(
@@ -852,12 +1473,17 @@ export function CostCalculation({
                     )
                   }
                 />
+
               </Field>
 
-              <Field label="E-Toll Manual (Rp)">
+              <Field label="E-Toll (Rp)">
+
                 <Input
                   type="number"
-                  value={manualEtoll}
+                  min={0}
+                  value={
+                    manualEtoll
+                  }
                   onChange={(e) =>
                     setManualEtoll(
                       parseFloat(
@@ -866,6 +1492,7 @@ export function CostCalculation({
                     )
                   }
                 />
+
               </Field>
 
             </div>
@@ -873,7 +1500,9 @@ export function CostCalculation({
             <Field label="Override Skema Perhitungan">
 
               <Select
-                value={schemeOverride}
+                value={
+                  schemeOverride
+                }
                 onChange={(e) =>
                   setSchemeOverride(
                     e.target.value
@@ -882,17 +1511,23 @@ export function CostCalculation({
               >
 
                 <option value="">
-                  Auto (dari itinerary)
+                  Auto dari itinerary
                 </option>
 
                 {SCHEME_OVERRIDE_OPTIONS.map(
                   (o) => (
+
                     <option
-                      key={o.value}
-                      value={o.value}
+                      key={
+                        o.value
+                      }
+                      value={
+                        o.value
+                      }
                     >
                       {o.label}
                     </option>
+
                   )
                 )}
 
@@ -900,24 +1535,33 @@ export function CostCalculation({
 
             </Field>
 
-            <label className="flex items-center gap-2.5 cursor-pointer bg-amber-50/60 p-3 rounded-xl border border-amber-200">
+            <label className="flex items-start gap-3 cursor-pointer bg-amber-50/60 p-4 rounded-xl border border-amber-200">
 
               <input
                 type="checkbox"
-                checked={hotelByHR}
+                checked={
+                  hotelByHR
+                }
                 onChange={(e) =>
                   setHotelByHR(
                     e.target.checked
                   )
                 }
-                className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500"
+                className="w-4 h-4 mt-0.5 rounded text-brand-600 focus:ring-brand-500"
               />
 
-              <span className="text-xs font-bold text-amber-900">
-                Akomodasi Hotel Dipesan HR
-                (Centang = nilai hotel Rp 0
-                & tidak cair ke Advance karyawan)
-              </span>
+              <div>
+
+                <div className="text-xs font-bold text-amber-900">
+                  Akomodasi dipesankan oleh HR
+                </div>
+
+                <div className="text-[11px] text-amber-700 mt-0.5">
+                  Jika dicentang, nilai akomodasi yang dicairkan ke pegawai menjadi Rp0.
+                  Jika tidak dicentang, biaya akomodasi LK / KP1 / KP2 / KPO masuk ke advance.
+                </div>
+
+              </div>
 
             </label>
 
@@ -926,10 +1570,17 @@ export function CostCalculation({
           {/* TABLE A */}
           <Card className="p-6 space-y-4">
 
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-brand-500" />
-              A. Rincian Perhitungan Pembiayaan
-            </h3>
+            <div>
+
+              <h3 className="text-sm font-bold text-slate-800">
+                A. Rincian Perhitungan & Override HR
+              </h3>
+
+              <p className="text-[11px] text-slate-500 mt-1">
+                Matrix menjadi nilai default. HR dapat mengubah seluruh nominal sebelum approval.
+              </p>
+
+            </div>
 
             <div className="overflow-x-auto">
 
@@ -937,64 +1588,38 @@ export function CostCalculation({
 
                 <thead>
 
-                  <tr className="bg-slate-50 text-slate-700 border-b border-slate-200">
+                  <tr className="bg-slate-50 text-slate-700">
 
-                    <th
-                      className="py-2 px-3 border border-slate-200 font-bold"
-                      rowSpan={2}
-                    >
+                    <th className="border border-slate-200 px-2 py-2 text-left">
                       Nama
                     </th>
 
-                    <th
-                      className="py-2 px-3 border border-slate-200 font-bold text-center"
-                      colSpan={3}
-                    >
-                      Tunjangan
+                    <th className="border border-slate-200 px-2 py-2">
+                      Jabatan
                     </th>
 
-                    <th
-                      className="py-2 px-3 border border-slate-200 font-bold"
-                      rowSpan={2}
-                    >
-                      BBM
-                    </th>
-
-                    <th
-                      className="py-2 px-3 border border-slate-200 font-bold"
-                      rowSpan={2}
-                    >
-                      E-Toll
-                    </th>
-
-                    <th
-                      className="py-2 px-3 border border-slate-200 font-bold"
-                      rowSpan={2}
-                    >
-                      Pettycash
-                    </th>
-
-                    <th
-                      className="py-2 px-3 border border-slate-200 font-bold"
-                      rowSpan={2}
-                    >
-                      Subtotal
-                    </th>
-
-                  </tr>
-
-                  <tr className="bg-slate-50 text-slate-700 border-b border-slate-200">
-
-                    <th className="py-1 px-2 border border-slate-200 text-center">
-                      Per Hari
-                    </th>
-
-                    <th className="py-1 px-2 border border-slate-200 text-center">
+                    <th className="border border-slate-200 px-2 py-2">
                       Hari
                     </th>
 
-                    <th className="py-1 px-2 border border-slate-200 text-center">
-                      Total
+                    <th className="border border-slate-200 px-2 py-2">
+                      Tunjangan
+                    </th>
+
+                    <th className="border border-slate-200 px-2 py-2">
+                      Akomodasi
+                    </th>
+
+                    <th className="border border-slate-200 px-2 py-2">
+                      Insentif Driver
+                    </th>
+
+                    <th className="border border-slate-200 px-2 py-2">
+                      Pettycash
+                    </th>
+
+                    <th className="border border-slate-200 px-2 py-2">
+                      Subtotal
                     </th>
 
                   </tr>
@@ -1004,85 +1629,141 @@ export function CostCalculation({
                 <tbody>
 
                   {cost.perParticipant.map(
-                    (pp, i) => {
-                      const dailyRate =
-                        totalDays > 0
-                          ? (
-                              perPersonOverride[
-                                pp.name
-                              ] ??
-                              pp.total
-                            ) /
-                            totalDays
-                          : 0;
-
-                      const subtotalPerson =
-                        (
-                          perPersonOverride[
-                            pp.name
-                          ] ??
-                          pp.total
-                        ) +
+                    (pp) => {
+                      const subtotal =
+                        pp.total +
+                        pp.hotel +
+                        pp.driver +
                         pp.pettyCash;
 
                       return (
-                        <tr
-                          key={i}
-                          className="border-b border-slate-200 hover:bg-slate-50/50"
-                        >
+                        <tr key={pp.name}>
 
-                          <td className="py-2 px-3 border border-slate-200 font-semibold text-slate-800">
+                          <td className="border border-slate-200 px-2 py-2 font-semibold">
                             {pp.name}
                           </td>
 
-                          <td className="py-2 px-3 border border-slate-200 text-right">
-                            {formatIDR(
-                              dailyRate
-                            )}
+                          <td className="border border-slate-200 px-2 py-2 text-center">
+                            {pp.jabatan}
                           </td>
 
-                          <td className="py-2 px-3 border border-slate-200 text-center">
-                            {totalDays}
+                          <td className="border border-slate-200 px-2 py-2 text-center">
+                            {pp.days}
                           </td>
 
-                          <td className="py-2 px-3 border border-slate-200 text-right font-medium">
-                            {formatIDR(
-                              perPersonOverride[
-                                pp.name
-                              ] ??
+                          <td className="border border-slate-200 p-1.5">
+
+                            <Input
+                              type="number"
+                              min={0}
+                              value={
                                 pp.total
+                              }
+                              onChange={(e) =>
+                                setAllowanceOverride(
+                                  (old) => ({
+                                    ...old,
+
+                                    [pp.name]:
+                                      parseFloat(
+                                        e.target.value
+                                      ) || 0,
+                                  })
+                                )
+                              }
+                              className="text-xs"
+                            />
+
+                          </td>
+
+                          <td className="border border-slate-200 p-1.5">
+
+                            {hotelByHR ? (
+
+                              <div className="text-center text-slate-400">
+                                Dipesan HR
+                              </div>
+
+                            ) : (
+
+                              <Input
+                                type="number"
+                                min={0}
+                                value={
+                                  pp.hotel
+                                }
+                                onChange={(e) =>
+                                  setHotelOverride(
+                                    (old) => ({
+                                      ...old,
+
+                                      [pp.name]:
+                                        parseFloat(
+                                          e.target.value
+                                        ) || 0,
+                                    })
+                                  )
+                                }
+                                className="text-xs"
+                              />
+
                             )}
+
                           </td>
 
-                          <td className="py-2 px-3 border border-slate-200 text-right">
-                            {i === 0 &&
-                            manualFuel > 0
-                              ? formatIDR(
-                                  manualFuel
+                          <td className="border border-slate-200 p-1.5">
+
+                            <Input
+                              type="number"
+                              min={0}
+                              value={
+                                pp.driver
+                              }
+                              onChange={(e) =>
+                                setDriverOverride(
+                                  (old) => ({
+                                    ...old,
+
+                                    [pp.name]:
+                                      parseFloat(
+                                        e.target.value
+                                      ) || 0,
+                                  })
                                 )
-                              : '-'}
+                              }
+                              className="text-xs"
+                            />
+
                           </td>
 
-                          <td className="py-2 px-3 border border-slate-200 text-right">
-                            {i === 0 &&
-                            manualEtoll > 0
-                              ? formatIDR(
-                                  manualEtoll
+                          <td className="border border-slate-200 p-1.5">
+
+                            <Input
+                              type="number"
+                              min={0}
+                              value={
+                                pp.pettyCash
+                              }
+                              onChange={(e) =>
+                                setPettyOverride(
+                                  (old) => ({
+                                    ...old,
+
+                                    [pp.name]:
+                                      parseFloat(
+                                        e.target.value
+                                      ) || 0,
+                                  })
                                 )
-                              : '-'}
+                              }
+                              className="text-xs"
+                            />
+
                           </td>
 
-                          <td className="py-2 px-3 border border-slate-200 text-right font-medium">
-                            {pp.pettyCash > 0
-                              ? formatIDR(
-                                  pp.pettyCash
-                                )
-                              : '-'}
-                          </td>
-
-                          <td className="py-2 px-3 border border-slate-200 text-right font-bold text-slate-900">
+                          <td className="border border-slate-200 px-2 py-2 text-right font-bold">
                             {formatIDR(
-                              subtotalPerson
+                              subtotal
                             )}
                           </td>
 
@@ -1091,56 +1772,168 @@ export function CostCalculation({
                     }
                   )}
 
-                  <tr className="bg-slate-100 font-bold text-slate-900">
+                  {selected.needs_driver &&
+                    cost.externalDriverIncentive >=
+                      0 && (
 
-                    <td className="py-2 px-3 border border-slate-200 text-center">
-                      Total
-                    </td>
+                    <tr className="bg-emerald-50/40">
 
-                    <td
-                      className="py-2 px-3 border border-slate-200"
-                      colSpan={2}
-                    />
+                      <td className="border border-slate-200 px-2 py-2 font-semibold">
+                        {selected.obligo_driver_name ||
+                          'Driver Assigned'}
+                      </td>
 
-                    <td className="py-2 px-3 border border-slate-200 text-right">
-                      {formatIDR(
-                        cost.perDiemTotal
-                      )}
-                    </td>
+                      <td className="border border-slate-200 px-2 py-2 text-center">
+                        Driver
+                      </td>
 
-                    <td className="py-2 px-3 border border-slate-200 text-right">
-                      {manualFuel > 0
-                        ? formatIDR(
-                            manualFuel
-                          )
-                        : '-'}
-                    </td>
+                      <td className="border border-slate-200 px-2 py-2 text-center">
+                        Per Trip
+                      </td>
 
-                    <td className="py-2 px-3 border border-slate-200 text-right">
-                      {manualEtoll > 0
-                        ? formatIDR(
-                            manualEtoll
-                          )
-                        : '-'}
-                    </td>
+                      <td className="border border-slate-200 px-2 py-2 text-center text-slate-400">
+                        -
+                      </td>
 
-                    <td className="py-2 px-3 border border-slate-200 text-right">
-                      {formatIDR(
-                        cost.pettyCashTotal
-                      )}
-                    </td>
+                      <td className="border border-slate-200 px-2 py-2 text-center text-slate-400">
+                        -
+                      </td>
 
-                    <td className="py-2 px-3 border border-slate-200 text-right font-black text-brand-800">
-                      {formatIDR(
-                        cost.grandTotal
-                      )}
-                    </td>
+                      <td className="border border-slate-200 p-1.5">
 
-                  </tr>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={
+                            cost.externalDriverIncentive
+                          }
+                          onChange={(e) =>
+                            setExternalDriverOverride(
+                              parseFloat(
+                                e.target.value
+                              ) || 0
+                            )
+                          }
+                          className="text-xs"
+                        />
+
+                      </td>
+
+                      <td className="border border-slate-200 px-2 py-2 text-center text-slate-400">
+                        -
+                      </td>
+
+                      <td className="border border-slate-200 px-2 py-2 text-right font-bold">
+                        {formatIDR(
+                          cost.externalDriverIncentive
+                        )}
+                      </td>
+
+                    </tr>
+
+                  )}
 
                 </tbody>
 
               </table>
+
+            </div>
+
+            {/* OPERATIONAL */}
+            <div className="grid md:grid-cols-2 gap-3">
+
+              <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 flex justify-between text-sm">
+
+                <span className="text-slate-600">
+                  BBM
+                </span>
+
+                <strong>
+                  {formatIDR(
+                    manualFuel
+                  )}
+                </strong>
+
+              </div>
+
+              <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 flex justify-between text-sm">
+
+                <span className="text-slate-600">
+                  E-Toll
+                </span>
+
+                <strong>
+                  {formatIDR(
+                    manualEtoll
+                  )}
+                </strong>
+
+              </div>
+
+            </div>
+
+            {/* TOTAL */}
+            <div className="rounded-xl bg-brand-50 border border-brand-200 p-4">
+
+              <div className="grid md:grid-cols-3 gap-3 text-xs">
+
+                <CostSummary
+                  label="Tunjangan"
+                  value={
+                    cost.perDiemTotal
+                  }
+                />
+
+                <CostSummary
+                  label="Akomodasi"
+                  value={
+                    cost.hotelTotal
+                  }
+                />
+
+                <CostSummary
+                  label="Insentif Driver"
+                  value={
+                    cost.driverTotal
+                  }
+                />
+
+                <CostSummary
+                  label="Pettycash"
+                  value={
+                    cost.pettyCashTotal
+                  }
+                />
+
+                <CostSummary
+                  label="BBM"
+                  value={
+                    manualFuel
+                  }
+                />
+
+                <CostSummary
+                  label="E-Toll"
+                  value={
+                    manualEtoll
+                  }
+                />
+
+              </div>
+
+              <div className="flex justify-between items-center mt-4 pt-3 border-t border-brand-200">
+
+                <span className="font-bold text-brand-900">
+                  Grand Total Advance
+                </span>
+
+                <span className="text-xl font-black text-brand-900">
+                  {formatIDR(
+                    cost.grandTotal
+                  )}
+                </span>
+
+              </div>
 
             </div>
 
@@ -1149,19 +1942,16 @@ export function CostCalculation({
           {/* TABLE B */}
           <Card className="p-6 space-y-4">
 
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
 
               <div>
 
                 <h3 className="text-sm font-bold text-slate-800">
-                  B. Rangkuman Pembiayaan
-                  (Split Cost Center Manual)
+                  B. Rangkuman Pembiayaan & Cost Center
                 </h3>
 
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  HR memecah nominal biaya per
-                  baris dan menentukan Beban
-                  Perusahaan (PT) terkait.
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Total Table B wajib sama dengan Grand Total Advance.
                 </p>
 
               </div>
@@ -1175,7 +1965,7 @@ export function CostCalculation({
                     generateCostSplitFromTableA
                   }
                 >
-                  Auto-Fill dari Tabel A
+                  Auto-Fill Table A
                 </Button>
 
                 <Button
@@ -1184,22 +1974,27 @@ export function CostCalculation({
                   icon={
                     <Plus className="w-3.5 h-3.5" />
                   }
-                  onClick={addExtraRow}
+                  onClick={
+                    addExtraRow
+                  }
                 >
-                  Add Row Biaya
+                  Add Row
                 </Button>
 
               </div>
 
             </div>
 
-            {extraRows.length === 0 ? (
+            {extraRows.length ===
+            0 ? (
 
-              <p className="text-xs text-slate-400 py-4 text-center">
-                Belum ada rincian pemecahan biaya.
-                Klik "Auto-Fill dari Tabel A" atau
-                "Add Row Biaya".
-              </p>
+              <EmptyState
+                icon={
+                  <Calculator className="w-5 h-5" />
+                }
+                title="Cost center belum diisi"
+                message="Klik Auto-Fill Table A untuk membuat rincian pembiayaan."
+              />
 
             ) : (
 
@@ -1209,25 +2004,25 @@ export function CostCalculation({
 
                   <thead>
 
-                    <tr className="text-left bg-slate-50 text-slate-700 border-b border-slate-200">
+                    <tr className="bg-slate-50">
 
-                      <th className="py-2 px-3 border border-slate-200 font-bold w-1/4">
+                      <th className="border border-slate-200 px-2 py-2">
                         Nama
                       </th>
 
-                      <th className="py-2 px-3 border border-slate-200 font-bold w-1/5">
-                        Nominal (Rp)
+                      <th className="border border-slate-200 px-2 py-2">
+                        Nominal
                       </th>
 
-                      <th className="py-2 px-3 border border-slate-200 font-bold w-1/4">
-                        Keterangan
+                      <th className="border border-slate-200 px-2 py-2">
+                        Komponen
                       </th>
 
-                      <th className="py-2 px-3 border border-slate-200 font-bold w-1/4">
-                        Beban Perusahaan
+                      <th className="border border-slate-200 px-2 py-2">
+                        Beban PT
                       </th>
 
-                      <th className="py-2 px-2 border border-slate-200 w-10 text-center">
+                      <th className="border border-slate-200 px-2 py-2 w-10">
                         Aksi
                       </th>
 
@@ -1238,111 +2033,106 @@ export function CostCalculation({
                   <tbody>
 
                     {extraRows.map(
-                      (r) => (
+                      (row) => (
 
-                        <tr
-                          key={r.id}
-                          className="border-b border-slate-200 hover:bg-slate-50/50"
-                        >
+                        <tr key={row.id}>
 
-                          <td className="p-1.5 border border-slate-200">
+                          <td className="border border-slate-200 p-1.5">
 
                             <Input
-                              className="w-full py-1 text-xs"
-                              value={r.name}
+                              value={
+                                row.name
+                              }
                               onChange={(e) =>
                                 updateExtraRow(
-                                  r.id,
+                                  row.id,
                                   {
                                     name:
-                                      e.target
-                                        .value,
+                                      e.target.value,
                                   }
                                 )
                               }
-                              placeholder="misal: Idris"
+                              className="text-xs"
                             />
 
                           </td>
 
-                          <td className="p-1.5 border border-slate-200">
+                          <td className="border border-slate-200 p-1.5">
 
                             <Input
                               type="number"
-                              className="w-full py-1 text-xs font-semibold"
+                              min={0}
                               value={
-                                r.nominal
+                                row.nominal
                               }
                               onChange={(e) =>
                                 updateExtraRow(
-                                  r.id,
+                                  row.id,
                                   {
                                     nominal:
                                       parseFloat(
-                                        e
-                                          .target
-                                          .value
-                                      ) ||
-                                      0,
+                                        e.target.value
+                                      ) || 0,
                                   }
                                 )
                               }
-                              placeholder="Nominal"
+                              className="text-xs"
                             />
 
                           </td>
 
-                          <td className="p-1.5 border border-slate-200">
+                          <td className="border border-slate-200 p-1.5">
 
                             <Input
-                              className="w-full py-1 text-xs"
                               value={
-                                r.keterangan
+                                row.keterangan
                               }
                               onChange={(e) =>
                                 updateExtraRow(
-                                  r.id,
+                                  row.id,
                                   {
                                     keterangan:
-                                      e
-                                        .target
-                                        .value,
+                                      e.target.value,
                                   }
                                 )
                               }
-                              placeholder="misal: Tunjangan / Pettycash TMB"
+                              className="text-xs"
                             />
 
                           </td>
 
-                          <td className="p-1.5 border border-slate-200">
+                          <td className="border border-slate-200 p-1.5">
 
                             <Select
-                              className="w-full py-1 text-xs"
                               value={
-                                r.pt_burden
+                                row.pt_burden
                               }
                               onChange={(e) =>
                                 updateExtraRow(
-                                  r.id,
+                                  row.id,
                                   {
                                     pt_burden:
-                                      e
-                                        .target
-                                        .value,
+                                      e.target.value,
                                   }
                                 )
                               }
+                              className="text-xs"
                             >
 
                               {PT_OPTIONS.map(
                                 (pt) => (
+
                                   <option
-                                    key={pt}
-                                    value={pt}
+                                    key={
+                                      pt
+                                    }
+                                    value={
+                                      pt
+                                    }
                                   >
                                     {pt}
                                   </option>
+
                                 )
                               )}
 
@@ -1350,22 +2140,23 @@ export function CostCalculation({
 
                           </td>
 
-                          <td className="p-1.5 border border-slate-200 text-center">
+                          <td className="border border-slate-200 p-1.5 text-center">
 
                             <button
                               onClick={() =>
                                 removeExtraRow(
-                                  r.id
+                                  row.id
                                 )
                               }
-                              className="text-rose-400 hover:text-rose-600 inline-flex items-center justify-center p-1"
+                              className="text-rose-500 hover:text-rose-700"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
 
                           </td>
 
                         </tr>
+
                       )
                     )}
 
@@ -1376,18 +2167,29 @@ export function CostCalculation({
               </div>
             )}
 
-            <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 font-semibold text-slate-700">
+            <div className="grid md:grid-cols-3 gap-3">
 
-              <span>
-                Total Alokasi Rangkuman
-                Pembiayaan (Tabel B)
-              </span>
-
-              <span className="font-bold text-slate-900">
-                {formatIDR(
+              <CostSummary
+                label="Total Table B"
+                value={
                   cost.extraTotal
-                )}
-              </span>
+                }
+              />
+
+              <CostSummary
+                label="Grand Total Advance"
+                value={
+                  cost.grandTotal
+                }
+              />
+
+              <CostSummary
+                label="Selisih"
+                value={
+                  cost.extraTotal -
+                  cost.grandTotal
+                }
+              />
 
             </div>
 
@@ -1400,111 +2202,41 @@ export function CostCalculation({
 
               <Field
                 label="Nomor SPD"
-                hint="Format: [SKEMA]-[NO]/[NAMA]"
                 required
               >
 
                 <Input
-                  value={spdNumber}
+                  value={
+                    spdNumber
+                  }
                   onChange={(e) =>
                     setSpdNumber(
                       e.target.value
                     )
                   }
-                  placeholder="KP2-172/Idris"
                 />
 
               </Field>
 
-              <Field
-                label="HR Notes"
-                hint="Opsional"
-              >
+              <Field label="HR Notes">
 
                 <Textarea
-                  rows={2}
-                  value={hrNotes}
+                  rows={3}
+                  value={
+                    hrNotes
+                  }
                   onChange={(e) =>
                     setHrNotes(
                       e.target.value
                     )
                   }
-                  placeholder="Catatan modifikasi HR..."
                 />
 
               </Field>
 
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-
-              <span className="text-base font-bold text-brand-800">
-                Grand Total Advance Biaya SPD
-              </span>
-
-              <span className="text-2xl font-black text-brand-800">
-                {formatIDR(
-                  cost.grandTotal
-                )}
-              </span>
-
-            </div>
-
-            <div className="flex gap-2 justify-end">
-
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() =>
-                  setSelected(null)
-                }
-              >
-                Cancel
-              </Button>
-
-              <Button
-                size="sm"
-                icon={
-                  <Save className="w-3.5 h-3.5" />
-                }
-                onClick={() => {
-                  updateTrip(
-                    selected.id,
-                    {
-                      cost_grand_total:
-                        cost.grandTotal,
-
-                      hr_notes:
-                        hrNotes,
-                    }
-                  );
-
-                  showToast(
-                    'success',
-                    'Disimpan sementara'
-                  );
-                }}
-              >
-                Save Draft
-              </Button>
-
-              <Button
-                size="sm"
-                icon={
-                  <Check className="w-3.5 h-3.5" />
-                }
-                onClick={approve}
-              >
-                Approve Advance
-              </Button>
-
-            </div>
-
-          </Card>
-
-          {selected.status ===
-            'Approved / Ready for Trip' && (
-            <Card className="p-6">
+            <div className="flex justify-end gap-2 flex-wrap">
 
               <Button
                 size="sm"
@@ -1518,14 +2250,64 @@ export function CostCalculation({
                   )
                 }
               >
-                Cetak PDF SPD
+                Preview PDF
               </Button>
 
-            </Card>
-          )}
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={
+                  <Save className="w-3.5 h-3.5" />
+                }
+                onClick={
+                  saveDraft
+                }
+              >
+                Save Draft
+              </Button>
+
+              <Button
+                size="sm"
+                icon={
+                  <Check className="w-3.5 h-3.5" />
+                }
+                onClick={
+                  approve
+                }
+              >
+                Approve Advance
+              </Button>
+
+            </div>
+
+          </Card>
 
         </>
       )}
+
+    </div>
+  );
+}
+
+function CostSummary({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-xl bg-white border border-slate-200 p-3">
+
+      <div className="text-[10px] uppercase tracking-wide text-slate-400 font-bold">
+        {label}
+      </div>
+
+      <div className="text-sm font-bold text-slate-900 mt-1">
+        {formatIDR(
+          value
+        )}
+      </div>
 
     </div>
   );
