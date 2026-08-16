@@ -45,9 +45,10 @@ export interface PerParticipant {
 export interface ItineraryLeg {
   id: string;
   start_date: string;
+  start_time: string;
   end_date: string;
+  end_time: string;
   destination: string;
-  destination_custom: string;
   kpScheme: KPScheme;
   isWithinCity: boolean;
   isLuarkota: boolean;
