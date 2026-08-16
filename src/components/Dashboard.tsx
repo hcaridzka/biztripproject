@@ -114,9 +114,7 @@ export function Dashboard({
             {displayTrips.slice(0, 8).map((t) => (
               <button
                 key={t.id}
-                onClick={() => {
-                  setSelectedTrip(t.id);
-                  setView('my-trips');
+                onClick={() => openTrip (t) };
                 }}
                 className="w-full flex items-center gap-4 rounded-xl ring-1 ring-slate-100 hover:ring-brand-200 hover:bg-brand-50/30 px-4 py-3 transition text-left"
               >
@@ -159,7 +157,65 @@ function StatCard({
     emerald: 'bg-emerald-50 text-emerald-600',
     slate: 'bg-slate-100 text-slate-600',
   };
+const openTrip = (t: any) => {
+  setSelectedTrip(t.id);
 
+  const role = profile?.role;
+
+  if (
+    t.status === 'Pending Manager Approval' &&
+    (role === 'Manager' || role === 'HR Manager')
+  ) {
+    setView('approval');
+    return;
+  }
+
+  if (
+    t.status === 'Pending PIC Obligo' &&
+    (role === 'PIC Obligo' || role === 'HR Manager')
+  ) {
+    setView('pic-obligo');
+    return;
+  }
+
+  if (
+    t.status === 'Pending Direksi Approval' &&
+    (role === 'Direksi' || role === 'HR Manager')
+  ) {
+    setView('approval');
+    return;
+  }
+
+  if (
+    t.status === 'Pending HR Advance Review' &&
+    role === 'HR Manager'
+  ) {
+    setView('cost-review');
+    return;
+  }
+
+  if (
+    t.status === 'Pending Settlement' &&
+    (role === 'Employee' || role === 'HR Manager')
+  ) {
+    setView('settlement');
+    return;
+  }
+
+  if (
+    (
+      t.status === 'Pending HR Settlement Review' ||
+      t.status === 'Pending Refund Verification'
+    ) &&
+    role === 'HR Manager'
+  ) {
+    setView('settlement-review');
+    return;
+  }
+
+  setView('my-trips');
+};
+  
   return (
     <Card className="p-5">
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${colors[color]}`}>
