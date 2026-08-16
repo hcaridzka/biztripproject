@@ -44,14 +44,62 @@ function Shell() {
   return (
     <>
       <Layout view={view} setView={setView}>
-        {view === 'dashboard' && <Dashboard setView={setView} setSelectedTrip={setSelectedTrip} />}
-        {view === 'new-request' && <RequestForm onDone={() => setView('my-trips')} />}
-        {view === 'my-trips' && <MyTrips onPrint={handlePrint} />}
-        {view === 'approval' && <ApprovalDashboard setSelectedTrip={setSelectedTrip} setView={setView} />}
-        {view === 'pic-obligo' && <PicObligo />}
-        {view === 'cost-review' && <CostCalculation onPrint={handlePrint} />}
-        {view === 'settlement' && <SettlementForm setSelectedTrip={setSelectedTrip} />}
-        {view === 'settlement-review' && <SettlementReview onPrint={(id) => setPrintTrip({ id, mode: 'settlement' })} />}
+        {view === 'dashboard' && (
+  <Dashboard
+    setView={setView}
+    setSelectedTrip={setSelectedTrip}
+  />
+)}
+
+{view === 'new-request' && (
+  <RequestForm
+    onDone={() => setView('my-trips')}
+  />
+)}
+
+{view === 'my-trips' && (
+  <MyTrips
+    onPrint={handlePrint}
+    selectedTripId={selectedTrip}
+  />
+)}
+
+{view === 'approval' && (
+  <ApprovalDashboard
+    setSelectedTrip={setSelectedTrip}
+    setView={setView}
+  />
+)}
+
+{view === 'pic-obligo' && (
+  <PicObligo
+    selectedTripId={selectedTrip}
+  />
+)}
+
+{view === 'cost-review' && (
+  <CostCalculation
+    onPrint={handlePrint}
+    selectedTripId={selectedTrip}
+  />
+)}
+
+{view === 'settlement' && (
+  <SettlementForm
+    setSelectedTrip={setSelectedTrip}
+  />
+)}
+
+{view === 'settlement-review' && (
+  <SettlementReview
+    onPrint={(id) =>
+      setPrintTrip({
+        id,
+        mode: 'settlement',
+      })
+    }
+  />
+)}
         {view === 'summary' && <SummaryExport />}
         {view === 'user-management' && <UserManagement />}
         {view === 'vehicles' && <FleetManagement />}
