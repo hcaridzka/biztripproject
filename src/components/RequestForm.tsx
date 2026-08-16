@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   FilePlus, Plus, Trash2, Calendar, Users, MapPin, AlertCircle,
-  Paperclip, Send, Calculator, Building2, Clock, Gauge,
+  Paperclip, Send, Calculator, Building2, Clock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -216,10 +216,8 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
       }
     }
 
-    const requiresPicObligo = needsVehicle === 'Kendaraan Dinas' || needsDriver === true;
-    const initialStatus = requiresPicObligo 
-      ? 'Pending PIC Obligo Approval' 
-      : 'Pending Manager Approval';
+    // FIX ALUR: Semua permohonan HARUS selalu diawali dari Manager terlebih dahulu
+    const initialStatus = 'Pending Manager Approval';
 
     const cost = computeCost({ 
       participants: allParticipants, 
@@ -609,11 +607,7 @@ export function RequestForm({ onDone }: { onDone: () => void }) {
               </div>
             ))}
           </div>
-          {pettyPreview.holder && (
-            <div className="rounded-xl bg-brand-50 ring-1 ring-brand-200 px-4 py-3 text-sm font-bold text-brand-800">
-              Seluruh total dana Petty Cash dipegang oleh perwakilan JABATAN/GRADE TERTINGGI: {pettyPreview.holder} ({pettyPreview.trips} trips)
-            </div>
-          )}
+          
           <div className="border-t border-slate-200 pt-3 space-y-1.5">
             <Row label="Total Tunjangan" value={formatIDR(preview.perDiemTotal)} />
             <Row label="Total Akomodasi Hotel" value={formatIDR(preview.hotelTotal)} />
