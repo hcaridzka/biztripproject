@@ -167,14 +167,26 @@ completed_at: nextStatus === 'Completed' ? new Date().toISOString() : null,
               <h3 className="text-sm font-bold text-slate-800">Settlement Review — {selected.requester_name}</h3>
               <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-xs">Tutup</button>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-xl bg-slate-50 p-4"><div className="text-xs text-slate-400">Advance</div><div className="text-lg font-bold text-slate-800 mt-1">{formatIDR(advance)}</div></div>
-              <div className="rounded-xl bg-slate-50 p-4"><div className="text-xs text-slate-400">Total Disetujui (Override)</div><div className="text-lg font-bold text-slate-800 mt-1">{formatIDR(approvedTotal)}</div></div>
-              <div className={`rounded-xl p-4 ${diff > 0 ? 'bg-amber-50' : diff < 0 ? 'bg-emerald-50' : 'bg-slate-50'}`}>
-                <div className="text-xs text-slate-400">Selisih ({category})</div>
-                <div className={`text-lg font-bold mt-1 ${diff > 0 ? 'text-amber-700' : diff < 0 ? 'text-emerald-700' : 'text-slate-800'}`}>{formatIDR(Math.abs(diff))}</div>
-              </div>
-            </div>
+            <div className="grid md:grid-cols-4 gap-3">
+  <SummaryBox label="Grand Advance" value={advanceTotal} />
+  <SummaryBox label="Non-Accountable" value={nonAccountable} />
+  <SummaryBox label="Advance Accountable" value={advanceAccountable} />
+  <SummaryBox label="Actual Approved" value={approvedActual} />
+</div>
+
+<div className={`rounded-xl p-4 ${
+  diff > 0
+    ? 'bg-amber-50'
+    : diff < 0
+    ? 'bg-rose-50'
+    : 'bg-emerald-50'
+}`}>
+  <div className="text-xs text-slate-500">Settlement Result</div>
+
+  <div className="text-lg font-bold mt-1">
+    {category} · {formatIDR(settlementAmount)}
+  </div>
+</div>
             {selected.work_result && (
               <div className="rounded-xl bg-slate-50 p-4">
                 <div className="text-xs font-semibold text-slate-500 mb-1">Laporan Hasil Pekerjaan:</div>
@@ -253,6 +265,16 @@ completed_at: nextStatus === 'Completed' ? new Date().toISOString() : null,
           </Card>
         </>
       )}
+    </div>
+  );
+}
+function SummaryBox({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-4">
+      <div className="text-xs text-slate-400">{label}</div>
+      <div className="text-base font-bold text-slate-800 mt-1">
+        {formatIDR(value)}
+      </div>
     </div>
   );
 }
