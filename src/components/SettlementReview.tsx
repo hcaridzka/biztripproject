@@ -23,7 +23,7 @@ export function SettlementReview({ onPrint }: { onPrint: (id: string) => void })
   [trips]
 );
 
-  cconst startReview = (t: BizTrip) => {
+  const startReview = (t: BizTrip) => {
   setSelected(t);
 
   const receipts = settlementReceipts.filter(
@@ -70,7 +70,6 @@ const settlementAmount = Math.abs(diff);
   const finalize = async (action: 'approve' | 'partial' | 'reject') => {
     if (!selected) return;
     try {
-      let nextStatus: BizTrip['status'] = 'Completed';
       let nextStatus: BizTrip['status'];
       if (action === 'reject') { nextStatus = 'Rejected'; } 
       else if (diff < 0) { nextStatus = 'Pending Refund'; } 
@@ -78,7 +77,6 @@ const settlementAmount = Math.abs(diff);
 
       await updateTrip(selected.id, {
         status: nextStatus,
-        settlement_result: action === 'approve' ? 'Approved' : action === 'partial' ? 'Partial Approved' : 'Rejected',
         settlement_note: settleNote,
         approved_total: approvedActual,
 settlement_result:
