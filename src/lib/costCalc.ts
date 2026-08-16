@@ -71,7 +71,27 @@ function legRate(
   const scheme = legScheme(leg, origin);
 
   // TAD & GM: flat 100k per trip regardless of leg
-  if (gk === 'TAD' || gk === 'GM') return { rate: 100000, scheme: gk === 'TAD' ? 'TAD Flat' : 'GM Flat' };
+  // GM = flat Rp100.000 per trip.
+  // TAD / Driver = Rp100.000 per hari.
+  // Nilai TAD tetap mengikuti matrix agar nantinya bisa dikelola,
+  // tetapi insentif jarak dihitung terpisah sebagai flat per trip.
+if (gk === 'GM') {
+  return {
+    rate: 100000,
+    scheme: 'GM Flat',
+  };
+}
+
+if (gk === 'TAD') {
+  const m =
+    matrix[gk] ??
+    DEFAULT_MATRIX[gk];
+
+  return {
+    rate: m.luarKota,
+    scheme: 'TAD Harian',
+  };
+}
 
   if (scheme === 'DK') {
     let tier = leg.dkTier ?? '25';
@@ -120,10 +140,11 @@ function perDiemForParticipant(
     legs.push({ legIndex: i, destination: leg.destination + (leg.destination_custom ? ` (${leg.destination_custom})` : ''), days: legDays, scheme, rate, amount });
   }
 
-  // GM/TAD: flat 100k total (not per-leg sum)
-  if (gk === 'GM' || gk === 'TAD') {
-    total = 100000;
-  }
+  // GM flat Rp100.000 per trip.
+  // TAD / Driver tetap menggunakan hasil per hari dari itinerary.
+  if (gk === 'GM') {
+  total = 100000;
+}
 
   // Hotel only for Luar Kota trips
   const tripDays = itinerary.reduce((s, l) => s + daysBetween(l.start_date, l.end_date), 0);
