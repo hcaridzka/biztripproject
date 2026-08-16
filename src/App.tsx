@@ -16,6 +16,7 @@ import { UserManagement } from './components/UserManagement';
 import { FleetManagement } from './components/FleetManagement';
 import { PdfPrint } from './components/PdfPrint';
 import { ToastHost } from './components/ui-shared';
+import { AccountSettings } from './components/AccountSettings';
 
 function Shell() {
   const { profile, loading } = useAuth();
@@ -102,6 +103,7 @@ function Shell() {
 )}
         {view === 'summary' && <SummaryExport />}
         {view === 'user-management' && <UserManagement />}
+        {view === 'account' && <AccountSettings />}
         {view === 'vehicles' && <FleetManagement />}
       </Layout>
 
