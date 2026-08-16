@@ -48,11 +48,14 @@ export interface ItineraryLeg {
   start_time: string;
   end_date: string;
   end_time: string;
+  
   destination: string;
+  destination_custom: string;
   kpScheme: KPScheme;
   isWithinCity: boolean;
   isLuarkota: boolean;
   dkTier?: DKTier;
+  
   agenda: string;
 }
 
