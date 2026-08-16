@@ -555,171 +555,104 @@ export function AppProvider({
 
         try {
           const [
-            tripResult,
+  tripResult,
+  disburseResult,
+  settlementClaimResult,
+  settlementReceiptResult,
+  vehicleResult,
+  driverResult,
+  trackingResult,
+  matrixResult,
+  settingResult,
+  ptMasterResult,
+] = await Promise.all([
+  // =======================================================
+  // CORE DATA
+  // =======================================================
 
-            disburseResult,
+  supabase
+    .from('biz_trips')
+    .select('*')
+    .order('created_at', {
+      ascending: false,
+    }),
 
-            settlementClaimResult,
-
-            settlementReceiptResult,
-
-            vehicleResult,
-
-            driverResult,
-
-            trackingResult,
-
-            matrixResult,
-
-            settingResult,
-
-            ptMasterResult,
-          ] =
-            await Promise.all([
-              supabase
-                .from(
-                  'biz_trips'
-                )
-                .select('*')
-                .order(
-                  'created_at',
-                  {
-                    ascending:
-                      false,
-                  }
-                ),
-
-              supabase
-                .from(
-                  'disburse_rows'
-                )
-                .select('*')
-                .order(
-                  'sort_order',
-                  {
-                    ascending:
-                      true,
-                  }
-                ),
-
-              supabase
-                .from(
-                  'settlement_claim_rows'
-                )
-                .select('*')
-                .order(
-                  'sort_order',
-                  {
-                    ascending:
-                      true,
-                  }
-                ),
-
-              supabase
-                .from(
-                  'settlement_receipts'
-                )
-                .select('*')
-                .order(
-                  'created_at',
-                  {
-                    ascending:
-                      false,
-                  }
-                ),
-
-              supabase
-                .from(
-                  'vehicles'
-                )
-                .select('*')
-                .order(
-                  'created_at',
-                  {
-                    ascending:
-                      false,
-                  }
-                ),
-
-              supabase
-                .from(
-                  'drivers'
-                )
-                .select('*')
-                .order(
-                  'created_at',
-                  {
-                    ascending:
-                      false,
-                  }
-                ),
-
-              supabase
-                .from(
-                  'trip_tracking'
-                )
-                .select('*')
-                .order(
-                  'created_at',
-                  {
-                    ascending:
-                      false,
-                  }
-                ),
-
-              /*
-               * MASTER MATRIX
-               */
-              supabase
-                .from(
-                  'travel_grade_matrix'
-                )
-                .select('*')
-                .order(
-                  'sort_order',
-                  {
-                    ascending:
-                      true,
-                  }
-                ),
-
-              /*
-               * GLOBAL TRAVEL SETTINGS
-               */
-              supabase
-                .from(
-                  'travel_settings'
-                )
-                .select('*')
-                .order(
-                  'setting_name',
-                  {
-                    ascending:
-                      true,
-                  }
-                ),
-            ]);
-
-          supabase
-  .from(
-    'travel_settings'
-  )
-  .select('*')
-  .order(
-    'setting_name',
-    {
+  supabase
+    .from('disburse_rows')
+    .select('*')
+    .order('sort_order', {
       ascending: true,
-    }
-  ),
+    }),
 
-supabase
-  .from('pt_master')
-  .select(
-    'id, name, code, is_active'
-  )
-  .order('name', {
-    ascending: true,
-  }),
+  supabase
+    .from('settlement_claim_rows')
+    .select('*')
+    .order('sort_order', {
+      ascending: true,
+    }),
+
+  supabase
+    .from('settlement_receipts')
+    .select('*')
+    .order('created_at', {
+      ascending: false,
+    }),
+
+  supabase
+    .from('vehicles')
+    .select('*')
+    .order('created_at', {
+      ascending: false,
+    }),
+
+  supabase
+    .from('drivers')
+    .select('*')
+    .order('created_at', {
+      ascending: false,
+    }),
+
+  supabase
+    .from('trip_tracking')
+    .select('*')
+    .order('created_at', {
+      ascending: false,
+    }),
+
+  // =======================================================
+  // MASTER MATRIX
+  // =======================================================
+
+  supabase
+    .from('travel_grade_matrix')
+    .select('*')
+    .order('sort_order', {
+      ascending: true,
+    }),
+
+  // =======================================================
+  // GLOBAL TRAVEL SETTINGS
+  // =======================================================
+
+  supabase
+    .from('travel_settings')
+    .select('*')
+    .order('setting_name', {
+      ascending: true,
+    }),
+
+  // =======================================================
+  // MASTER PT
+  // =======================================================
+
+  supabase
+    .from('pt_master')
+    .select(
+      'id, name, code, is_active'
+    )
+    .order('name', {
+      ascending: true,
+    }),
 ]);
           // ===============================================
           // CORE DATA
