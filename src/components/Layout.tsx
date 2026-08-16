@@ -1,7 +1,7 @@
 import { ReactNode, useState } from 'react';
 import {
   Building2, FilePlus, ClipboardList, CheckSquare, Truck, BarChart3,
-  LogOut, ChevronDown, Users, MapPin, RefreshCw,
+  LogOut, ChevronDown, Users, MapPin, RefreshCw, Settings,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -9,7 +9,7 @@ import { cn } from '../lib/utils';
 import { DEMO_ACCOUNTS } from '../lib/constants';
 import type { Role } from '../lib/types';
 
-export type ViewKey = 'dashboard' | 'new-request' | 'my-trips' | 'approval' | 'pic-obligo' | 'cost-review' | 'settlement' | 'settlement-review' | 'summary' | 'user-management' | 'vehicles' | 'print-advance' | 'print-settlement';
+export type ViewKey = 'dashboard' | 'new-request' | 'my-trips' | 'approval' | 'pic-obligo' | 'cost-review' | 'settlement' | 'settlement-review' | 'summary' | 'user-management' | 'vehicles' | 'print-advance' | 'print-settlement'| 'account';
 
 interface NavItem { key: ViewKey; label: string; icon: ReactNode; roles: Role[]; }
 
@@ -25,6 +25,7 @@ const NAV: NavItem[] = [
   { key: 'summary', label: 'Monthly Summary', icon: <BarChart3 className="w-4.5 h-4.5"/>, roles: ['Manager', 'Direksi', 'HR Manager'] },
   { key: 'user-management', label: 'User Management', icon: <Users className="w-4.5 h-4.5"/>, roles: ['HR Manager'] },
   { key: 'vehicles', label: 'Fleet Management', icon: <Truck className="w-4.5 h-4.5"/>, roles: ['PIC Obligo', 'HR Manager'] },
+  { key: 'account', label: 'My Account', icon: <Settings className="w-4.5 h-4.5" />, roles: ['Employee', 'Manager', 'PIC Obligo', 'Direksi', 'HR Manager'], },
 ];
 
 export function Layout({ view, setView, children }: { view: ViewKey; setView: (v: ViewKey) => void; children: ReactNode }) {
