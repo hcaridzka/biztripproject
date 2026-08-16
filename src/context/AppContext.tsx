@@ -65,20 +65,29 @@ interface TravelGradeMatrixRow {
 
 interface TravelSettingRow {
   id: string;
+
   setting_key: string;
   setting_name: string;
+
   nominal: number;
+
   is_active: boolean;
 }
 
 export interface PTMasterRow {
   id: string;
+
   name: string;
   code: string | null;
+
   is_active: boolean;
 }
 
 interface AppCtx {
+  // =======================================================
+  // CORE DATA
+  // =======================================================
+
   trips: BizTrip[];
 
   disburseRows: DisburseRow[];
@@ -92,6 +101,10 @@ interface AppCtx {
   drivers: Driver[];
 
   tracking: TripTracking[];
+
+  // =======================================================
+  // UI
+  // =======================================================
 
   toasts: Toast[];
 
@@ -111,8 +124,12 @@ interface AppCtx {
 
   travelSettingsRows: TravelSettingRow[];
 
+  // =======================================================
+  // MASTER PT
+  // =======================================================
+
   ptMaster: PTMasterRow[];
-  
+
   activePTMaster: PTMasterRow[];
 
   // =======================================================
@@ -150,10 +167,9 @@ interface AppCtx {
 // CONTEXT
 // =========================================================
 
-const Ctx =
-  createContext<AppCtx>(
-    {} as AppCtx
-  );
+const Ctx = createContext<AppCtx>(
+  {} as AppCtx
+);
 
 export const useApp = () =>
   useContext(Ctx);
@@ -174,50 +190,43 @@ export function AppProvider({
   const [
     trips,
     setTrips,
-  ] =
-    useState<BizTrip[]>([]);
+  ] = useState<BizTrip[]>([]);
 
   const [
     disburseRows,
     setDisburseRows,
-  ] =
-    useState<DisburseRow[]>([]);
+  ] = useState<DisburseRow[]>([]);
 
   const [
     settlementClaimRows,
     setSettlementClaimRows,
-  ] =
-    useState<
-      SettlementClaimRow[]
-    >([]);
+  ] = useState<
+    SettlementClaimRow[]
+  >([]);
 
   const [
     settlementReceipts,
     setSettlementReceipts,
-  ] =
-    useState<
-      SettlementReceipt[]
-    >([]);
+  ] = useState<
+    SettlementReceipt[]
+  >([]);
 
   const [
     vehicles,
     setVehicles,
-  ] =
-    useState<Vehicle[]>([]);
+  ] = useState<Vehicle[]>([]);
 
   const [
     drivers,
     setDrivers,
-  ] =
-    useState<Driver[]>([]);
+  ] = useState<Driver[]>([]);
 
   const [
     tracking,
     setTracking,
-  ] =
-    useState<
-      TripTracking[]
-    >([]);
+  ] = useState<
+    TripTracking[]
+  >([]);
 
   // =======================================================
   // MATRIX DATA
@@ -226,18 +235,16 @@ export function AppProvider({
   const [
     travelMatrix,
     setTravelMatrix,
-  ] =
-    useState<DynamicMatrixMap>(
-      DEFAULT_MATRIX
-    );
+  ] = useState<DynamicMatrixMap>(
+    DEFAULT_MATRIX
+  );
 
   const [
     travelDKMatrix,
     setTravelDKMatrix,
-  ] =
-    useState<DynamicDKMatrixMap>(
-      DEFAULT_DK_MATRIX
-    );
+  ] = useState<DynamicDKMatrixMap>(
+    DEFAULT_DK_MATRIX
+  );
 
   const [
     driverIncentive,
@@ -250,29 +257,30 @@ export function AppProvider({
   const [
     travelMatrixRows,
     setTravelMatrixRows,
-  ] =
-    useState<
-      TravelGradeMatrixRow[]
-    >([]);
+  ] = useState<
+    TravelGradeMatrixRow[]
+  >([]);
 
   const [
     travelSettingsRows,
     setTravelSettingsRows,
-  ] =
-    useState<
-      TravelSettingRow[]
-    >([]);
+  ] = useState<
+    TravelSettingRow[]
+  >([]);
+
+  // =======================================================
+  // MASTER PT
+  // =======================================================
 
   const [
-  ptMaster,
-  setPtMaster,
-] =
-  useState<PTMasterRow[]>([]);
+    ptMaster,
+    setPtMaster,
+  ] = useState<PTMasterRow[]>([]);
 
   const activePTMaster =
-  ptMaster.filter(
-    (pt) => pt.is_active
-  );
+    ptMaster.filter(
+      (pt) => pt.is_active
+    );
 
   // =======================================================
   // UI STATE
@@ -281,14 +289,12 @@ export function AppProvider({
   const [
     toasts,
     setToasts,
-  ] =
-    useState<Toast[]>([]);
+  ] = useState<Toast[]>([]);
 
   const [
     loading,
     setLoading,
-  ] =
-    useState(true);
+  ] = useState(true);
 
   // =======================================================
   // TOAST
@@ -318,14 +324,15 @@ export function AppProvider({
         );
 
         setTimeout(
-          () =>
+          () => {
             setToasts(
               (current) =>
                 current.filter(
                   (toast) =>
                     toast.id !== id
                 )
-            ),
+            );
+          },
           4500
         );
       },
@@ -359,10 +366,11 @@ export function AppProvider({
         /*
          * Selalu mulai dari fallback.
          *
-         * Jadi jika salah satu grade
-         * belum tersedia di database,
-         * calculation tetap aman.
+         * Kalau salah satu grade belum
+         * tersedia di database, calculation
+         * tetap bisa berjalan.
          */
+
         const nextMatrix:
           DynamicMatrixMap = {
             Direksi: {
@@ -555,105 +563,166 @@ export function AppProvider({
 
         try {
           const [
-  tripResult,
-  disburseResult,
-  settlementClaimResult,
-  settlementReceiptResult,
-  vehicleResult,
-  driverResult,
-  trackingResult,
-  matrixResult,
-  settingResult,
-  ptMasterResult,
-] = await Promise.all([
-  // =======================================================
-  // CORE DATA
-  // =======================================================
+            tripResult,
+            disburseResult,
+            settlementClaimResult,
+            settlementReceiptResult,
+            vehicleResult,
+            driverResult,
+            trackingResult,
+            matrixResult,
+            settingResult,
+            ptMasterResult,
+          ] = await Promise.all([
+            // =============================================
+            // CORE DATA
+            // =============================================
 
-  supabase
-    .from('biz_trips')
-    .select('*')
-    .order('created_at', {
-      ascending: false,
-    }),
+            supabase
+              .from(
+                'biz_trips'
+              )
+              .select('*')
+              .order(
+                'created_at',
+                {
+                  ascending:
+                    false,
+                }
+              ),
 
-  supabase
-    .from('disburse_rows')
-    .select('*')
-    .order('sort_order', {
-      ascending: true,
-    }),
+            supabase
+              .from(
+                'disburse_rows'
+              )
+              .select('*')
+              .order(
+                'sort_order',
+                {
+                  ascending:
+                    true,
+                }
+              ),
 
-  supabase
-    .from('settlement_claim_rows')
-    .select('*')
-    .order('sort_order', {
-      ascending: true,
-    }),
+            supabase
+              .from(
+                'settlement_claim_rows'
+              )
+              .select('*')
+              .order(
+                'sort_order',
+                {
+                  ascending:
+                    true,
+                }
+              ),
 
-  supabase
-    .from('settlement_receipts')
-    .select('*')
-    .order('created_at', {
-      ascending: false,
-    }),
+            supabase
+              .from(
+                'settlement_receipts'
+              )
+              .select('*')
+              .order(
+                'created_at',
+                {
+                  ascending:
+                    false,
+                }
+              ),
 
-  supabase
-    .from('vehicles')
-    .select('*')
-    .order('created_at', {
-      ascending: false,
-    }),
+            supabase
+              .from(
+                'vehicles'
+              )
+              .select('*')
+              .order(
+                'created_at',
+                {
+                  ascending:
+                    false,
+                }
+              ),
 
-  supabase
-    .from('drivers')
-    .select('*')
-    .order('created_at', {
-      ascending: false,
-    }),
+            supabase
+              .from(
+                'drivers'
+              )
+              .select('*')
+              .order(
+                'created_at',
+                {
+                  ascending:
+                    false,
+                }
+              ),
 
-  supabase
-    .from('trip_tracking')
-    .select('*')
-    .order('created_at', {
-      ascending: false,
-    }),
+            supabase
+              .from(
+                'trip_tracking'
+              )
+              .select('*')
+              .order(
+                'created_at',
+                {
+                  ascending:
+                    false,
+                }
+              ),
 
-  // =======================================================
-  // MASTER MATRIX
-  // =======================================================
+            // =============================================
+            // MASTER MATRIX
+            // =============================================
 
-  supabase
-    .from('travel_grade_matrix')
-    .select('*')
-    .order('sort_order', {
-      ascending: true,
-    }),
+            supabase
+              .from(
+                'travel_grade_matrix'
+              )
+              .select('*')
+              .order(
+                'sort_order',
+                {
+                  ascending:
+                    true,
+                }
+              ),
 
-  // =======================================================
-  // GLOBAL TRAVEL SETTINGS
-  // =======================================================
+            // =============================================
+            // GLOBAL TRAVEL SETTINGS
+            // =============================================
 
-  supabase
-    .from('travel_settings')
-    .select('*')
-    .order('setting_name', {
-      ascending: true,
-    }),
+            supabase
+              .from(
+                'travel_settings'
+              )
+              .select('*')
+              .order(
+                'setting_name',
+                {
+                  ascending:
+                    true,
+                }
+              ),
 
-  // =======================================================
-  // MASTER PT
-  // =======================================================
+            // =============================================
+            // MASTER PT
+            // =============================================
 
-  supabase
-    .from('pt_master')
-    .select(
-      'id, name, code, is_active'
-    )
-    .order('name', {
-      ascending: true,
-    }),
-]);
+            supabase
+              .from(
+                'pt_master'
+              )
+              .select(
+                'id, name, code, is_active'
+              )
+              .order(
+                'name',
+                {
+                  ascending:
+                    true,
+                }
+              ),
+          ]);
+
           // ===============================================
           // CORE DATA
           // ===============================================
@@ -784,8 +853,9 @@ export function AppProvider({
 
             /*
              * Jangan kosongkan matrix.
-             * Fallback tetap digunakan.
+             * Gunakan fallback jika query gagal.
              */
+
             setTravelMatrix(
               DEFAULT_MATRIX
             );
@@ -841,23 +911,24 @@ export function AppProvider({
           }
 
           // ===============================================
-// MASTER PT
-// ===============================================
+          // MASTER PT
+          // ===============================================
 
-if (ptMasterResult.error) {
-  console.error(
-    'pt_master error',
-    ptMasterResult.error
-  );
-} else {
-  setPtMaster(
-    (
-      ptMasterResult.data ??
-      []
-    ) as PTMasterRow[]
-  );
-}
-          
+          if (
+            ptMasterResult.error
+          ) {
+            console.error(
+              'pt_master error',
+              ptMasterResult.error
+            );
+          } else {
+            setPtMaster(
+              (
+                ptMasterResult.data ??
+                []
+              ) as PTMasterRow[]
+            );
+          }
         } catch (error) {
           console.error(
             'refresh error',
@@ -1044,6 +1115,7 @@ if (ptMasterResult.error) {
   return (
     <Ctx.Provider
       value={{
+        // Core
         trips,
 
         disburseRows,
@@ -1058,11 +1130,12 @@ if (ptMasterResult.error) {
 
         tracking,
 
+        // UI
         toasts,
 
         loading,
 
-        // Dynamic matrix
+        // Dynamic Matrix
         travelMatrix,
 
         travelDKMatrix,
@@ -1073,9 +1146,10 @@ if (ptMasterResult.error) {
 
         travelSettingsRows,
 
-        // Master Pt
+        // Master PT
         ptMaster,
-        activePTMaster
+
+        activePTMaster,
 
         // Actions
         refresh,
