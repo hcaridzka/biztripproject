@@ -211,25 +211,29 @@ export function PicObligo({
   /*
    * SUBMIT ASSIGNMENT
    */
-  const submit = async () => {
-    if (!selected) {
-      return;
-    }
+  const needsVehicle =
+  selected.requires_vehicle === true ||
+  selected.needs_vehicle === true;
 
-    /*
-     * Kendaraan wajib jika
-     * trip memang masuk PIC Obligo.
-     */
-    if (
-      !vehiclePlate.trim()
-    ) {
-      showToast(
-        'error',
-        'Nomor plat wajib diisi'
-      );
+const needsDriver =
+  selected.requires_driver === true ||
+  selected.needs_driver === true;
 
-      return;
-    }
+if (needsVehicle && !vehiclePlate.trim()) {
+  showToast(
+    'error',
+    'Kendaraan wajib diassign untuk perjalanan ini'
+  );
+  return;
+}
+
+if (needsDriver && !driverName.trim()) {
+  showToast(
+    'error',
+    'Driver wajib diassign untuk perjalanan ini'
+  );
+  return;
+}
 
     try {
       await updateTrip(
