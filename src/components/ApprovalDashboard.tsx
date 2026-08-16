@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { CheckSquare, MapPin, Check, X, RotateCcw, MessageSquare, Filter } from 'lucide-react';
+import { CheckSquare, MapPin, Check, X, RotateCcw, MessageSquare, Filter, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { Card, Button, Select, Field, Textarea, EmptyState, StatusBadge, Modal, formatIDR } from './ui-shared';
@@ -11,7 +11,7 @@ import type { ViewKey } from './Layout';
 
 export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTrip: (id: string) => void; setView: (v: ViewKey) => void }) {
   const { profile } = useAuth();
-  const { trips, updateTrip, showToast, refresh } = useApp();
+  const { trips, updateTrip, deleteTrip, showToast, refresh } = useApp();
   const [ptFilter, setPtFilter] = useState('');
   const [rejectTrip, setRejectTrip] = useState<BizTrip | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -21,6 +21,19 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
   const ptAccess = profile?.pt_access ?? [];
   const isHR = role === 'HR Manager';
   const isSuperAdmin = profile?.is_super_admin === true || isHR;
+
+  // Fungsi untuk menghapus pengajuan trip
+  const handleDelete = async (id: string) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus pengajuan trip ini?')) return;
+    try {
+      await deleteTrip(id);
+      showToast('success', 'Pengajuan trip berhasil dihapus');
+      if (selected?.id === id) setSelected(null);
+      refresh();
+    } catch (e: any) {
+      showToast('error', 'Gagal menghapus: ' + e.message);
+    }
+  };
 
   const ptMatches = (t: BizTrip) => isSuperAdmin || ptAccess.length === 0 || t.company_burden.some((b) => ptAccess.includes(b));
   const ptFilterMatches = (t: BizTrip) => !ptFilter || t.company_burden.includes(ptFilter);
@@ -207,6 +220,11 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
                   <Button size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={() => approve(t)}>Approve</Button>
                   <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => { setRejectTrip(t); setRejectReason(''); }}>Reject</Button>
                   <Button size="sm" variant="secondary" onClick={() => { setSelected(t); setSelectedTrip(t.id); }}>Detail</Button>
+                  {isHR && (
+                    <Button size="sm" variant="danger" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={() => handleDelete(t.id)}>
+                      Hapus
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -232,6 +250,11 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
             <Button size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={() => approve(selected)}>Approve</Button>
             <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => { setRejectTrip(selected); setRejectReason(''); }}>Reject</Button>
             {selected.status === 'Rejected' && <Button size="sm" variant="secondary" icon={<RotateCcw className="w-3.5 h-3.5" />} onClick={() => requestReReview(selected)}>Request Re-Review</Button>}
+            {isHR && (
+              <Button size="sm" variant="danger" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={() => handleDelete(selected.id)}>
+                Hapus Trip
+              </Button>
+            )}
           </div>
         </Card>
       )}
