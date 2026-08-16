@@ -32,7 +32,7 @@ export const DEFAULT_MATRIX: DynamicMatrixMap = {
   'Head/TL':  { luarKota: 150000, kp1: 50000,  kp2: 90000,  kpo: 30000, hotel: 350000, pettyCash: 50000 },
   'Staff':    { luarKota: 100000, kp1: 30000,  kp2: 60000,  kpo: 30000, hotel: 250000, pettyCash: 50000 },
   'GM':       { luarKota: 100000, kp1: 100000, kp2: 100000, kpo: 100000, hotel: 350000, pettyCash: 50000 },
-  'TAD':      { luarKota: 100000, kp1: 100000, kp2: 100000, kpo: 100000, hotel: 0,      pettyCash: 35000 },
+  'TAD':      { luarKota: 100000, kp1: 100000, kp2: 100000, kpo: 100000, hotel: 250000, pettyCash: 35000 },
 };
 
 export const DEFAULT_DK_MATRIX: DynamicDKMatrixMap = {
@@ -128,7 +128,7 @@ function perDiemForParticipant(
   const m = matrix[gk] ?? DEFAULT_MATRIX[gk];
   const legs: LegBreakdown[] = [];
   let total = 0;
-  let isLuarKota = false;
+  let isLuarKota = 0;
 
   for (let i = 0; i < itinerary.length; i++) {
     const leg = itinerary[i];
@@ -136,7 +136,7 @@ function perDiemForParticipant(
     const { rate, scheme } = legRate(p, leg, origin, matrix, dkMatrix);
     const amount = rate * legDays;
     total += amount;
-    if (scheme !== 'DK') isLuarKota = true;
+    if (scheme !== 'DK') {hotelDays += legDays;} ;
     legs.push({ legIndex: i, destination: leg.destination + (leg.destination_custom ? ` (${leg.destination_custom})` : ''), days: legDays, scheme, rate, amount });
   }
 
@@ -147,8 +147,23 @@ function perDiemForParticipant(
 }
 
   // Hotel only for Luar Kota trips
-  const tripDays = itinerary.reduce((s, l) => s + daysBetween(l.start_date, l.end_date), 0);
-  const hotel = isLuarKota ? m.hotel * tripDays : 0;
+  const tripDays = itinerary.reduce(
+  (s, l) =>
+    s +
+    daysBetween(
+      l.start_date,
+      l.end_date
+    ),
+  0
+);
+
+/*
+ * Akomodasi hanya untuk hari pada:
+ * LK / KP1 / KP2 / KPO.
+ * DK tidak mendapat akomodasi.
+ */
+const hotel =
+  m.hotel * hotelDays;
   const perDay = total / Math.max(1, tripDays);
   const breakdown = legs.map((l) => `${l.scheme} ${formatIDR(l.rate)}×${l.days}d`).join(' + ');
 
@@ -163,11 +178,23 @@ export function computePettyCash(
   matrix: DynamicMatrixMap = DEFAULT_MATRIX
 ): { total: number; holder: string | null; perPerson: number; trips: number; perPersonBreakdown: { name: string; jabatan: Jabatan; amount: number }[] } {
   const internalParticipants = participants.filter((p) => (p.category ?? 'Internal') !== 'Eksternal');
-  const hasLuarKota = itinerary.some((l) => legScheme(l, '') !== 'DK');
-  const hasKP2orKPO = itinerary.some((l) => l.kpScheme === 'KP2' || l.kpScheme === 'KPO' || l.destination.includes('SITE'));
+  const pettyCashEligible =
+  itinerary.some((l) => {
+    const scheme =
+      legScheme(l, '');
 
-  // Petty cash active: Luar Kota/KP2/KPO AND > 1 internal person
-  if ((!hasLuarKota && !hasKP2orKPO) || internalParticipants.length <= 1) {
+    return (
+      scheme === 'LK' ||
+      scheme === 'KP2' ||
+      scheme === 'KPO'
+    );
+  });
+
+if (
+  !pettyCashEligible ||
+  internalParticipants.length <=
+    1
+) {
     return { total: 0, holder: null, perPerson: 0, trips: 0, perPersonBreakdown: [] };
   }
 
