@@ -112,28 +112,41 @@ export function MatrixManagement() {
   }, []);
 
   const addPT = async () => {
-    if (!newPTName.trim()) {
-      showToast('error', 'Nama PT wajib diisi');
-      return;
-    }
+  if (!newPTName.trim()) {
+    showToast('error', 'Nama PT wajib diisi');
+    return;
+  }
 
-    try {
-      const { error } = await supabase.from('pt_master').insert({
+  try {
+    const { error } = await supabase
+      .from('pt_master')
+      .insert({
         name: newPTName.trim(),
         code: newPTCode.trim() || null,
         is_active: true,
       });
 
-      if (error) throw error;
+    if (error) throw error;
 
-      setNewPTName('');
-      setNewPTCode('');
+    setNewPTName('');
+    setNewPTCode('');
 
-      showToast('success', 'PT berhasil ditambahkan');
-     await Promise.all([
-  loadData(),
-  refresh(),
-]);
+    showToast(
+      'success',
+      'PT berhasil ditambahkan'
+    );
+
+    await Promise.all([
+      loadData(),
+      refresh(),
+    ]);
+  } catch (e: any) {
+    showToast(
+      'error',
+      'Gagal menambah PT: ' + e.message
+    );
+  }
+};
 
   const updatePT = async (row: PTMaster) => {
     setSavingId(row.id);
