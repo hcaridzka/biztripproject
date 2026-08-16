@@ -19,6 +19,7 @@ interface AppCtx {
   setTripStatus: (id: string, status: BizTrip['status'], remarks?: string) => Promise<void>;
   showToast: (type: Toast['type'], message: string) => void;
   dismissToast: (id: string) => void;
+  deleteTrip: (id: string) => Promise<void>;
 }
 
 const Ctx = createContext<AppCtx>({} as any);
@@ -75,6 +76,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTrips((prev) => prev.map((t) => t.id === id ? { ...t, ...patch } : t));
   }, []);
 
+  const deleteTrip = useCallback(async (id: string) => {
+  const { error } = await supabase.from('biz_trips').delete().eq('id', id);
+  if (error) throw error;
+  setTrips((prev) => prev.filter((t) => t.id !== id));
+}, []);
+
   const setTripStatus = useCallback(async (id: string, status: BizTrip['status'], remarks?: string) => {
     const trip = trips.find((t) => t.id === id);
     if (!trip) return;
@@ -93,11 +100,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [trips, updateTrip]);
 
   return (
-    <Ctx.Provider value={{
-      trips, disburseRows, settlementClaimRows, settlementReceipts, vehicles, drivers,
-      tracking, toasts, loading, refresh, updateTrip, setTripStatus, showToast, dismissToast,
-    }}>
-      {children}
-    </Ctx.Provider>
+  <Ctx.Provider value={{
+    trips, disburseRows, settlementClaimRows, settlementReceipts, vehicles, drivers,
+    tracking, toasts, loading, refresh, updateTrip, setTripStatus, deleteTrip, showToast, dismissToast,
+  }}>
+    {children}
+  </Ctx.Provider>
   );
 }
