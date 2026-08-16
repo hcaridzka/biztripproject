@@ -15,44 +15,81 @@ export function SettlementReview({ onPrint }: { onPrint: (id: string) => void })
   const [claimRows, setClaimRows] = useState<{ id: string; name: string; nominal: number; claim_status: 'Refund' | 'Reimburse'; pt_burden: string }[]>([]);
   const [settleNote, setSettleNote] = useState('');
 
-  const queue = useMemo(() => trips.filter((t) => t.status === 'Pending HR Settlement Review' || t.status === 'Pending Reimbursement Approval' || t.status === 'Pending Refund'), [trips]);
+  const queue = useMemo(
+  () => trips.filter((t) =>
+    t.status === 'Pending HR Settlement Review' ||
+    t.status === 'Pending Refund Verification'
+  ),
+  [trips]
+);
 
-  const startReview = (t: BizTrip) => {
-    setSelected(t);
-    const advance = Number(t.cost_grand_total) || 0;
-    const actual = Number(t.realization_total) || 0;
-    
-    setClaimRows([
-      { id: uid(), name: 'Advance Diterima', nominal: advance, claim_status: 'Refund', pt_burden: t.company_burden?.[0] ?? PT_OPTIONS[0] },
-      { id: uid(), name: 'Realisasi Aktual', nominal: actual, claim_status: 'Reimburse', pt_burden: t.company_burden?.[0] ?? PT_OPTIONS[0] },
-    ]);
-    setSettleNote(t.settlement_note ?? '');
-  };
+  cconst startReview = (t: BizTrip) => {
+  setSelected(t);
+
+  const receipts = settlementReceipts.filter(
+    (r) => r.trip_id === t.id && r.category !== 'Refund Transfer Proof'
+  );
+
+  setClaimRows(
+    receipts.map((r) => ({
+      id: r.id,
+      name: r.description || r.category,
+      nominal: Number(r.hr_approved_amount ?? r.amount) || 0,
+      claim_status: 'Reimburse',
+      pt_burden: t.company_burden?.[0] ?? PT_OPTIONS[0],
+    }))
+  );
+  setSettleNote(t.settlement_note ?? '');
+};
 
   const addRow = () => setClaimRows((r) => [...r, { id: uid(), name: '', nominal: 0, claim_status: 'Reimburse', pt_burden: PT_OPTIONS[0] }]);
   const updateRow = (id: string, patch: any) => setClaimRows((r) => r.map((x) => x.id === id ? { ...x, ...patch } : x));
   const removeRow = (id: string) => setClaimRows((r) => r.filter((x) => x.id !== id));
 
-  const advance = Number(selected?.cost_grand_total) || 0;
+  const advanceTotal = Number(selected?.cost_grand_total) || 0;
+  const advanceAccountable =
+  Number(selected?.cost_data?.accountable?.total) || 0;
+  const nonAccountable =
+  Number(selected?.cost_data?.nonAccountable?.total) || 0;
+  const approvedActual = claimRows.reduce(
+  (sum, row) => sum + (Number(row.nominal) || 0),
+  0
+);
   
-  // Kalkulasi total realisasi/disetujui dinamis berdasarkan input override HR
-  const approvedTotal = claimRows.reduce((s, r) => s + (Number(r.nominal) || 0), 0);
-  const diff = approvedTotal - advance;
-  const category = diff > 0 ? 'Reimburse' : diff < 0 ? 'Refund' : 'Settled';
+const diff = approvedActual - advanceAccountable;
+
+const category =
+  diff > 0
+    ? 'Reimburse'
+    : diff < 0
+    ? 'Refund'
+    : 'Settled';
+
+const settlementAmount = Math.abs(diff);
 
   const finalize = async (action: 'approve' | 'partial' | 'reject') => {
     if (!selected) return;
     try {
       let nextStatus: BizTrip['status'] = 'Completed';
-      if (action === 'reject') nextStatus = 'Rejected';
-      else if (diff > 0) nextStatus = 'Pending Reimbursement Approval';
-      else if (diff < 0) nextStatus = 'Pending Refund';
+      let nextStatus: BizTrip['status'];
+      if (action === 'reject') { nextStatus = 'Rejected'; } 
+      else if (diff < 0) { nextStatus = 'Pending Refund'; } 
+      else { nextStatus = 'Completed'; }
 
       await updateTrip(selected.id, {
         status: nextStatus,
         settlement_result: action === 'approve' ? 'Approved' : action === 'partial' ? 'Partial Approved' : 'Rejected',
         settlement_note: settleNote,
-        approved_total: approvedTotal,
+        approved_total: approvedActual,
+settlement_result:
+  action === 'reject'
+    ? 'Rejected'
+    : category === 'Reimburse'
+    ? `Reimbursement - ${settlementAmount}`
+    : category === 'Refund'
+    ? `Refund - ${settlementAmount}`
+    : 'Settled',
+completed_at: nextStatus === 'Completed' ? new Date().toISOString() : null,
         settlement_reviewed_by: profile?.name ?? '',
         settlement_reviewed_at: new Date().toISOString(),
         settlement_number: `STL-${new Date().getFullYear()}-${selected.id.slice(0, 4).toUpperCase()}`,
