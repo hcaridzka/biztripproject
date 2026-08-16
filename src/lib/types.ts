@@ -79,8 +79,7 @@ export type TripStatus =
   | 'On Trip'
   | 'Pending Settlement'
   | 'Pending HR Settlement Review'
-  | 'Pending Reimbursement Approval'
-  | 'Pending Refund'
+  | 'Pending Refund Verification'
   | 'Completed'
   | 'Rejected';
 
