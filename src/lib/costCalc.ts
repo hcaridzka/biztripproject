@@ -22,7 +22,7 @@ export function gradeKey(j: Jabatan): GradeKey {
   if (j === 'Direksi') return 'Direksi';
   if (j === 'General Manager') return 'GM';
   if (j === 'Head Department' || j === 'Team Leader') return 'Head/TL';
-  if (j === 'TAD') return 'TAD';
+if (j === 'TAD' || j === 'Driver') return 'TAD'; // Driver disamakan dengan grade TAD
   return 'Staff';
 }
 
