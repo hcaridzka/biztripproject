@@ -75,6 +75,9 @@ export function CostCalculation({
     updateTrip,
     showToast,
     refresh,
+    travelMatrix,
+    travelDKMatrix,
+    driverincentive
   } = useApp();
 
   const [selected, setSelected] =
@@ -484,6 +487,16 @@ export function CostCalculation({
             manualEtoll,
 
           hotelByHR,
+          allowanceOverride,
+      hotelOverride,
+      driverOverride,
+      pettyOverride,
+      externalDriverOverride,
+      extraRows,
+
+      travelMatrix,
+      travelDKMatrix,
+      driverIncentive,
         });
 
       /*
