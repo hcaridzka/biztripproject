@@ -55,7 +55,7 @@ type TravelSetting = {
 
 export function MatrixManagement() {
   const { profile } = useAuth();
-  const { showToast } = useApp();
+  const { showToast, refresh } = useApp();
 
   const [ptMaster, setPtMaster] = useState<PTMaster[]>([]);
   const [matrix, setMatrix] = useState<GradeMatrixRow[]>([]);
@@ -130,11 +130,10 @@ export function MatrixManagement() {
       setNewPTCode('');
 
       showToast('success', 'PT berhasil ditambahkan');
-      loadData();
-    } catch (e: any) {
-      showToast('error', 'Gagal menambah PT: ' + e.message);
-    }
-  };
+     await Promise.all([
+  loadData(),
+  refresh(),
+]);
 
   const updatePT = async (row: PTMaster) => {
     setSavingId(row.id);
@@ -152,6 +151,10 @@ export function MatrixManagement() {
       if (error) throw error;
 
       showToast('success', 'Master PT berhasil diperbarui');
+      await Promise.all([
+  loadData(),
+  refresh(),
+]);
     } catch (e: any) {
       showToast('error', 'Gagal update PT: ' + e.message);
     } finally {
@@ -184,6 +187,10 @@ export function MatrixManagement() {
       if (error) throw error;
 
       showToast('success', `Matrix ${row.grade_name} berhasil disimpan`);
+      await Promise.all([
+  loadData(),
+  refresh(),
+]);
     } catch (e: any) {
       showToast('error', 'Gagal update matrix: ' + e.message);
     } finally {
@@ -207,6 +214,10 @@ export function MatrixManagement() {
       if (error) throw error;
 
       showToast('success', 'Travel setting berhasil diperbarui');
+      await Promise.all([
+  loadData(),
+  refresh(),
+]);
     } catch (e: any) {
       showToast('error', 'Gagal update setting: ' + e.message);
     } finally {
