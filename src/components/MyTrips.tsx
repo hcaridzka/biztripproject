@@ -17,6 +17,10 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
   
   const [rescheduleTrip, setRescheduleTrip] = useState<BizTrip | null>(null);
   const [rescheduleReason, setRescheduleReason] = useState('');
+  const [newDepartureDate, setNewDepartureDate] = useState('');
+  const [newDepartureTime, setNewDepartureTime] = useState('');
+  const [newReturnDate, setNewReturnDate] = useState('');
+  const [newReturnTime, setNewReturnTime] = useState('');
 
   const myTrips = useMemo(() => trips.filter((t) => t.user_id === profile?.id), [trips, profile]);
   const selected = myTrips.find((t) => t.id === selectedId) ?? null;
@@ -99,31 +103,192 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
     refresh();
   };
 
-  const doReschedule = async () => {
-    if (!rescheduleTrip || !rescheduleReason.trim()) { 
-      showToast('error', 'Catatan alasan reschedule wajib diisi'); 
-      return; 
-    }
-    await updateTrip(rescheduleTrip.id, { 
-      status: 'Pending Manager Approval', 
-      cancel_reason_category: 'Reschedule', 
-      cancel_reason_detail: rescheduleReason, 
-      review_justification: `Permohonan Reschedule: ${rescheduleReason}` 
+const openReschedule = (trip: BizTrip) => {
+  setRescheduleTrip(trip);
+  setRescheduleReason('');
+
+  setNewDepartureDate(trip.departure_date);
+  setNewDepartureTime(trip.departure_time ?? '');
+
+  setNewReturnDate(trip.return_date);
+  setNewReturnTime(trip.return_time ?? '');
+};
+
+  const shiftDate = (dateString: string, diffDays: number) => {
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setDate(date.getDate() + diffDays);
+  return date.toISOString().slice(0, 10);
+};
+
+const dateDiffInDays = (oldDate: string, newDate: string) => {
+  const oldD = new Date(`${oldDate}T00:00:00`);
+  const newD = new Date(`${newDate}T00:00:00`);
+
+  return Math.round(
+    (newD.getTime() - oldD.getTime()) / (1000 * 60 * 60 * 24)
+  );
+};
+  
+ const doReschedule = async () => {
+  if (
+    !rescheduleTrip ||
+    !rescheduleReason.trim() ||
+    !newDepartureDate ||
+    !newReturnDate
+  ) {
+    showToast(
+      'error',
+      'Tanggal baru dan alasan reschedule wajib diisi'
+    );
+    return;
+  }
+
+  const newDepartureDateTime = new Date(
+    `${newDepartureDate}T${newDepartureTime || '00:00'}`
+  );
+
+  const newReturnDateTime = new Date(
+    `${newReturnDate}T${newReturnTime || '23:59'}`
+  );
+
+  if (newReturnDateTime < newDepartureDateTime) {
+    showToast(
+      'error',
+      'Tanggal dan jam kembali tidak boleh sebelum tanggal dan jam berangkat'
+    );
+    return;
+  }
+
+  const originalItinerary = rescheduleTrip.itinerary ?? [];
+
+  if (originalItinerary.length === 0) {
+    showToast('error', 'Itinerary perjalanan tidak ditemukan');
+    return;
+  }
+
+  const departureDiff = dateDiffInDays(
+    rescheduleTrip.departure_date,
+    newDepartureDate
+  );
+
+  /*
+   * Seluruh itinerary digeser berdasarkan tanggal berangkat baru.
+   * Destination, agenda, scheme, peserta, kendaraan, dll tetap.
+   */
+  let shiftedItinerary = originalItinerary.map((leg) => ({
+    ...leg,
+    start_date: shiftDate(leg.start_date, departureDiff),
+    end_date: shiftDate(leg.end_date, departureDiff),
+  }));
+
+  /*
+   * Leg pertama mengikuti tanggal/jam berangkat baru.
+   */
+  shiftedItinerary = shiftedItinerary.map((leg, index) => {
+    if (index !== 0) return leg;
+
+    return {
+      ...leg,
+      start_date: newDepartureDate,
+      start_time: newDepartureTime || leg.start_time,
+    };
+  });
+
+  /*
+   * Leg terakhir mengikuti tanggal/jam kembali baru.
+   */
+  shiftedItinerary = shiftedItinerary.map((leg, index) => {
+    if (index !== shiftedItinerary.length - 1) return leg;
+
+    return {
+      ...leg,
+      end_date: newReturnDate,
+      end_time: newReturnTime || leg.end_time,
+    };
+  });
+
+  const oldSchedule =
+    `${rescheduleTrip.departure_date} ` +
+    `${rescheduleTrip.departure_time ?? ''} s/d ` +
+    `${rescheduleTrip.return_date} ` +
+    `${rescheduleTrip.return_time ?? ''}`;
+
+  const newSchedule =
+    `${newDepartureDate} ` +
+    `${newDepartureTime ?? ''} s/d ` +
+    `${newReturnDate} ` +
+    `${newReturnTime ?? ''}`;
+
+  try {
+    await updateTrip(rescheduleTrip.id, {
+      itinerary: shiftedItinerary,
+
+      departure_date: newDepartureDate,
+      departure_time: newDepartureTime || null,
+
+      return_date: newReturnDate,
+      return_time: newReturnTime || null,
+
+      total_days: daysBetween(
+        newDepartureDate,
+        newReturnDate
+      ),
+
+      /*
+       * Reschedule tidak kembali ke Manager/Direksi.
+       * Langsung masuk HR untuk hitung ulang biaya.
+       */
+      status: 'Pending HR Advance Review',
+
+      cancel_reason_category: 'Reschedule',
+      cancel_reason_detail: rescheduleReason,
+
+      review_justification:
+        `Reschedule dari ${oldSchedule} menjadi ${newSchedule}. ` +
+        `Alasan: ${rescheduleReason}`,
+
+      /*
+       * SPD lama tidak berlaku karena jadwal berubah.
+       */
+      spd_number: null,
+      spd_issued_at: null,
+      approved_at: null,
     });
-    await supabase.from('trip_tracking').insert({ 
-      trip_id: rescheduleTrip.id, 
-      actor_name: profile?.name ?? '', 
-      actor_role: 'Employee', 
-      action: 'Reschedule Request', 
-      from_status: rescheduleTrip.status, 
-      to_status: 'Pending Manager Approval', 
-      remarks: rescheduleReason 
+
+    await supabase.from('trip_tracking').insert({
+      trip_id: rescheduleTrip.id,
+      actor_name: profile?.name ?? '',
+      actor_role: 'Employee',
+      action: 'Reschedule Request',
+      from_status: rescheduleTrip.status,
+      to_status: 'Pending HR Advance Review',
+      remarks:
+        `Jadwal lama: ${oldSchedule}. ` +
+        `Jadwal baru: ${newSchedule}. ` +
+        `Alasan: ${rescheduleReason}`,
     });
-    showToast('success', 'Permohonan reschedule dikirim ke Manager');
-    setRescheduleTrip(null); 
+
+    showToast(
+      'success',
+      'Reschedule berhasil diajukan dan akan direview ulang oleh HR'
+    );
+
+    setRescheduleTrip(null);
     setRescheduleReason('');
+
+    setNewDepartureDate('');
+    setNewDepartureTime('');
+    setNewReturnDate('');
+    setNewReturnTime('');
+
     refresh();
-  };
+  } catch (e: any) {
+    showToast(
+      'error',
+      'Gagal mengajukan reschedule: ' + e.message
+    );
+  }
+};
 
   if (selected) {
     const canCancel = !['Completed', 'Rejected'].includes(selected.status);
@@ -137,7 +302,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
             )}
             {canCancel && (
               <>
-                <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={() => { setRescheduleTrip(selected); setRescheduleReason(''); }}>Reschedule</Button>
+                <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={() => openReschedule(selected); }}>Reschedule</Button>
                 <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => { setCancelTrip(selected); setCancelReason(''); }}>Cancel Trip</Button>
               </>
             )}
@@ -191,7 +356,7 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
                   )}
                   {canCancel && (
                     <>
-                      <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5 text-brand-600" />} onClick={(e) => { e.stopPropagation(); setRescheduleTrip(t); setRescheduleReason(''); }}>Reschedule</Button>
+                      <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5 text-brand-600" />} onClick={(e) => { e.stopPropagation(); openReschedule(selected); }}>Reschedule</Button>
                       <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); setCancelTrip(t); setCancelReason(''); }}>Cancel Trip</Button>
                     </>
                   )}
@@ -219,22 +384,114 @@ export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
       </Modal>
 
       {/* Reschedule modal */}
-      <Modal open={!!rescheduleTrip} onClose={() => setRescheduleTrip(null)} title="Reschedule Request">
-        <div className="space-y-4">
-          <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 text-sm text-amber-800">
-            Anda akan mengajukan penjadwalan ulang (Reschedule): <strong>{rescheduleTrip?.purpose}</strong>
-          </div>
-          <Field label="Catatan & Usulan Tanggal Baru Reschedule" required>
-            <Textarea rows={3} value={rescheduleReason} onChange={(e) => setRescheduleReason(e.target.value)} placeholder="Jelaskan detail usulan jadwal baru..." />
-          </Field>
-          <div className="flex gap-2 justify-end">
-            <Button variant="secondary" size="sm" onClick={() => setRescheduleTrip(null)}>Batal</Button>
-            <Button variant="primary" size="sm" icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={doReschedule}>Submit Reschedule</Button>
-          </div>
-        </div>
-      </Modal>
+      <Modal
+  open={!!rescheduleTrip}
+  onClose={() => setRescheduleTrip(null)}
+  title="Reschedule Perjalanan"
+>
+  <div className="space-y-4">
+
+    <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 text-sm text-amber-800">
+      Reschedule hanya untuk perubahan jadwal perjalanan.
+      Tujuan dan rute perjalanan tidak dapat diubah.
+      Jika tujuan atau rute berubah, silakan cancel dan buat pengajuan baru.
     </div>
-  );
+
+    {rescheduleTrip && (
+      <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+        Jadwal sebelumnya:
+        <strong className="ml-1">
+          {formatDate(rescheduleTrip.departure_date)}
+          {' - '}
+          {formatDate(rescheduleTrip.return_date)}
+        </strong>
+      </div>
+    )}
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+      <Field label="Tanggal Berangkat Baru" required>
+        <input
+          type="date"
+          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          value={newDepartureDate}
+          onChange={(e) =>
+            setNewDepartureDate(e.target.value)
+          }
+        />
+      </Field>
+
+      <Field label="Jam Berangkat Baru">
+        <input
+          type="time"
+          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          value={newDepartureTime}
+          onChange={(e) =>
+            setNewDepartureTime(e.target.value)
+          }
+        />
+      </Field>
+
+      <Field label="Tanggal Kembali Baru" required>
+        <input
+          type="date"
+          min={newDepartureDate}
+          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          value={newReturnDate}
+          onChange={(e) =>
+            setNewReturnDate(e.target.value)
+          }
+        />
+      </Field>
+
+      <Field label="Jam Kembali Baru">
+        <input
+          type="time"
+          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          value={newReturnTime}
+          onChange={(e) =>
+            setNewReturnTime(e.target.value)
+          }
+        />
+      </Field>
+
+    </div>
+
+    <Field label="Alasan Reschedule" required>
+      <Textarea
+        rows={3}
+        value={rescheduleReason}
+        onChange={(e) =>
+          setRescheduleReason(e.target.value)
+        }
+        placeholder="Jelaskan alasan perubahan jadwal..."
+      />
+    </Field>
+
+    <div className="flex gap-2 justify-end">
+
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => setRescheduleTrip(null)}
+      >
+        Batal
+      </Button>
+
+      <Button
+        variant="primary"
+        size="sm"
+        icon={
+          <CalendarClock className="w-3.5 h-3.5" />
+        }
+        onClick={doReschedule}
+      >
+        Submit Reschedule
+      </Button>
+
+    </div>
+  </div>
+</Modal>
 }
 
 void Calendar; void CheckCircle2;
