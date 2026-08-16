@@ -83,6 +83,7 @@ export const STATUS_META: Record<TripStatus, { label: string; color: string; dot
   'On Trip': { label: 'On Trip', color: 'bg-indigo-100 text-indigo-700', dot: 'bg-indigo-500', step: 6 },
   'Pending Settlement': { label: 'Pending Settlement', color: 'bg-purple-100 text-purple-700', dot: 'bg-purple-500', step: 7 },
   'Pending HR Settlement Review': { label: 'Pending HR Settlement', color: 'bg-cyan-100 text-cyan-700', dot: 'bg-cyan-500', step: 8 },
+  'Pending Refund': { label: 'Pending Refund', color: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500', step: 9 },
   'Pending Refund Verification': { label: 'Verifikasi Refund', color: 'bg-violet-100 text-violet-700', dot: 'bg-violet-500', step: 10, },
   'Completed': { label: 'Completed', color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-600', step: 11 },
   'Rejected': { label: 'Rejected', color: 'bg-red-100 text-red-700', dot: 'bg-red-500', step: -1 },
