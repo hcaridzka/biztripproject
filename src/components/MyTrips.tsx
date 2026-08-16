@@ -30,7 +30,17 @@ import { supabase } from '../lib/supabase';
 
 import type { BizTrip } from '../lib/types';
 
-export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {
+export function MyTrips({ onPrint }: { onPrint: (id: string) => void }) {useEffect(() => {
+  if (!selectedTripId) return;
+
+  const tripExists = myTrips.some(
+    (t) => t.id === selectedTripId
+  );
+
+  if (tripExists) {
+    setSelectedId(selectedTripId);
+  }
+}, [selectedTripId, myTrips]); 
   const { profile } = useAuth();
 
   const {
