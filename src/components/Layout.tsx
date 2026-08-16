@@ -9,7 +9,7 @@ import { cn } from '../lib/utils';
 import { DEMO_ACCOUNTS } from '../lib/constants';
 import type { Role } from '../lib/types';
 
-export type ViewKey = 'dashboard' | 'new-request' | 'my-trips' | 'approval' | 'pic-obligo' | 'cost-review' | 'settlement' | 'settlement-review' | 'summary' | 'user-management' | 'vehicles' | 'print-advance' | 'print-settlement'| 'account';
+export type ViewKey = 'dashboard' | 'new-request' | 'my-trips' | 'approval' | 'pic-obligo' | 'cost-review' | 'settlement' | 'settlement-review' | 'summary' | 'user-management' | 'vehicles' | 'print-advance' | 'print-settlement'| 'account' | 'matrix-management';
 
 interface NavItem { key: ViewKey; label: string; icon: ReactNode; roles: Role[]; }
 
@@ -26,6 +26,7 @@ const NAV: NavItem[] = [
   { key: 'user-management', label: 'User Management', icon: <Users className="w-4.5 h-4.5"/>, roles: ['HR Manager'] },
   { key: 'vehicles', label: 'Fleet Management', icon: <Truck className="w-4.5 h-4.5"/>, roles: ['PIC Obligo', 'HR Manager'] },
   { key: 'account', label: 'My Account', icon: <Settings className="w-4.5 h-4.5" />, roles: ['Employee', 'Manager', 'PIC Obligo', 'Direksi', 'HR Manager'], },
+  { key: 'matrix-management', label: 'Master & Matrix', icon: <Settings className="w-4.5 h-4.5" />, roles: ['HR Manager'], },
 ];
 
 export function Layout({ view, setView, children }: { view: ViewKey; setView: (v: ViewKey) => void; children: ReactNode }) {
