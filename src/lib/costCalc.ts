@@ -1,8 +1,27 @@
-import type { Participant, ItineraryLeg, Jabatan, KPScheme, DKTier, TripCategory, TotalDistanceOption } from './types';
-import { JABATAN_RANK, DK_DISTANCE_TIERS } from './constants';
-import { uid, daysBetween, formatIDR } from './utils';
+import type {
+  Participant,
+  ItineraryLeg,
+  Jabatan,
+  KPScheme,
+  DKTier,
+  TripCategory,
+  TotalDistanceOption,
+} from './types';
 
-// ===== DYNAMIC MATRIX TYPES & DEFAULTS =====
+import {
+  JABATAN_RANK,
+  DK_DISTANCE_TIERS,
+} from './constants';
+
+import {
+  uid,
+  daysBetween,
+  formatIDR,
+} from './utils';
+
+// =========================================================
+// MATRIX TYPES
+// =========================================================
 
 export interface GradeMatrix {
   luarKota: number;
@@ -13,98 +32,313 @@ export interface GradeMatrix {
   pettyCash: number;
 }
 
-export type GradeKey = 'Direksi' | 'Head/TL' | 'Staff' | 'GM' | 'TAD';
+export type GradeKey =
+  | 'Direksi'
+  | 'Head/TL'
+  | 'Staff'
+  | 'GM'
+  | 'TAD';
 
-export type DynamicMatrixMap = Record<GradeKey, GradeMatrix>;
-export type DynamicDKMatrixMap = Record<GradeKey, Record<DKTier, number>>;
+export type DynamicMatrixMap = Record<
+  GradeKey,
+  GradeMatrix
+>;
 
-export function gradeKey(j: Jabatan): GradeKey {
-  if (j === 'Direksi') return 'Direksi';
-  if (j === 'General Manager') return 'GM';
-  if (j === 'Head Department' || j === 'Team Leader') return 'Head/TL';
-if (j === 'TAD' || j === 'Driver') return 'TAD'; // Driver disamakan dengan grade TAD
-  return 'Staff';
+export type DynamicDKMatrixMap = Record<
+  GradeKey,
+  Record<DKTier, number>
+>;
+
+export interface DriverIncentiveSettings {
+  gt200: number;
+  gt400: number;
 }
 
-// Fallback Default Matrix
+// =========================================================
+// FALLBACK MATRIX
+// Dipakai hanya jika matrix database belum tersedia.
+// =========================================================
+
 export const DEFAULT_MATRIX: DynamicMatrixMap = {
-  'Direksi':  { luarKota: 200000, kp1: 100000, kp2: 125000, kpo: 50000, hotel: 500000, pettyCash: 100000 },
-  'Head/TL':  { luarKota: 150000, kp1: 50000,  kp2: 90000,  kpo: 30000, hotel: 350000, pettyCash: 50000 },
-  'Staff':    { luarKota: 100000, kp1: 30000,  kp2: 60000,  kpo: 30000, hotel: 250000, pettyCash: 50000 },
-  'GM':       { luarKota: 100000, kp1: 100000, kp2: 100000, kpo: 100000, hotel: 350000, pettyCash: 50000 },
-  'TAD':      { luarKota: 100000, kp1: 100000, kp2: 100000, kpo: 100000, hotel: 250000, pettyCash: 35000 },
+  Direksi: {
+    luarKota: 200000,
+    kp1: 100000,
+    kp2: 125000,
+    kpo: 50000,
+    hotel: 500000,
+    pettyCash: 100000,
+  },
+
+  'Head/TL': {
+    luarKota: 150000,
+    kp1: 50000,
+    kp2: 90000,
+    kpo: 30000,
+    hotel: 350000,
+    pettyCash: 50000,
+  },
+
+  Staff: {
+    luarKota: 100000,
+    kp1: 30000,
+    kp2: 60000,
+    kpo: 30000,
+    hotel: 250000,
+    pettyCash: 50000,
+  },
+
+  GM: {
+    luarKota: 100000,
+    kp1: 100000,
+    kp2: 100000,
+    kpo: 100000,
+    hotel: 350000,
+    pettyCash: 50000,
+  },
+
+  TAD: {
+    luarKota: 100000,
+    kp1: 100000,
+    kp2: 100000,
+    kpo: 100000,
+    hotel: 250000,
+    pettyCash: 35000,
+  },
 };
 
 export const DEFAULT_DK_MATRIX: DynamicDKMatrixMap = {
-  'Direksi': { '25': 50000,  '50': 75000,  '100': 100000 },
-  'Head/TL': { '25': 30000,  '50': 50000,  '100': 75000 },
-  'Staff':   { '25': 15000,  '50': 25000,  '100': 50000 },
-  'GM':      { '25': 50000,  '50': 75000,  '100': 100000 },
-  'TAD':     { '25': 100000, '50': 100000, '100': 100000 },
+  Direksi: {
+    '25': 50000,
+    '50': 75000,
+    '100': 100000,
+  },
+
+  'Head/TL': {
+    '25': 30000,
+    '50': 50000,
+    '100': 75000,
+  },
+
+  Staff: {
+    '25': 15000,
+    '50': 25000,
+    '100': 50000,
+  },
+
+  GM: {
+    '25': 50000,
+    '50': 75000,
+    '100': 100000,
+  },
+
+  TAD: {
+    '25': 100000,
+    '50': 100000,
+    '100': 100000,
+  },
 };
 
-export function getGradeMatrix(j: Jabatan, matrix: DynamicMatrixMap = DEFAULT_MATRIX): GradeMatrix {
-  return matrix[gradeKey(j)] ?? DEFAULT_MATRIX[gradeKey(j)];
+export const DEFAULT_DRIVER_INCENTIVE: DriverIncentiveSettings = {
+  gt200: 50000,
+  gt400: 100000,
+};
+
+// =========================================================
+// GRADE MAPPING
+// =========================================================
+
+export function gradeKey(jabatan: Jabatan): GradeKey {
+  if (jabatan === 'Direksi') {
+    return 'Direksi';
+  }
+
+  if (jabatan === 'General Manager') {
+    return 'GM';
+  }
+
+  if (
+    jabatan === 'Head Department' ||
+    jabatan === 'Team Leader'
+  ) {
+    return 'Head/TL';
+  }
+
+  if (
+    jabatan === 'TAD' ||
+    jabatan === 'Driver'
+  ) {
+    return 'TAD';
+  }
+
+  return 'Staff';
 }
 
-// Determine the scheme for a single leg
-function legScheme(leg: ItineraryLeg, origin: string): 'DK' | 'KP1' | 'KP2' | 'KPO' | 'LK' {
-  if (leg.isWithinCity) return 'DK';
-  if (leg.destination.includes('SITE') || leg.destination_custom?.includes('SITE')) return 'KP2';
-  if (leg.destination.includes('Branch Office')) return 'KP1';
-  if (leg.destination === 'Luar Kota' || leg.isLuarkota) return 'LK';
-  if (leg.kpScheme === 'KPO') return 'KPO';
-  if (leg.kpScheme === 'KP1') return 'KP1';
-  if (leg.kpScheme === 'KP2') return 'KP2';
+export function getGradeMatrix(
+  jabatan: Jabatan,
+  matrix: DynamicMatrixMap = DEFAULT_MATRIX
+): GradeMatrix {
+  const key = gradeKey(jabatan);
+
+  return (
+    matrix[key] ??
+    DEFAULT_MATRIX[key]
+  );
+}
+
+// =========================================================
+// LEG / ITINERARY SCHEME
+// =========================================================
+
+function legScheme(
+  leg: ItineraryLeg,
+  origin: string
+): 'DK' | 'KP1' | 'KP2' | 'KPO' | 'LK' {
+  if (leg.isWithinCity) {
+    return 'DK';
+  }
+
+  if (
+    leg.destination.includes('SITE') ||
+    leg.destination_custom?.includes('SITE')
+  ) {
+    return 'KP2';
+  }
+
+  if (leg.destination.includes('Branch Office')) {
+    return 'KP1';
+  }
+
+  if (
+    leg.destination === 'Luar Kota' ||
+    leg.isLuarkota
+  ) {
+    return 'LK';
+  }
+
+  if (leg.kpScheme === 'KPO') {
+    return 'KPO';
+  }
+
+  if (leg.kpScheme === 'KP1') {
+    return 'KP1';
+  }
+
+  if (leg.kpScheme === 'KP2') {
+    return 'KP2';
+  }
+
   return 'LK';
 }
 
-// Per-leg rate for a participant
+// =========================================================
+// RATE PER LEG
+// =========================================================
+
 function legRate(
-  p: Participant, 
-  leg: ItineraryLeg, 
+  participant: Participant,
+  leg: ItineraryLeg,
   origin: string,
   matrix: DynamicMatrixMap = DEFAULT_MATRIX,
   dkMatrix: DynamicDKMatrixMap = DEFAULT_DK_MATRIX
-): { rate: number; scheme: string } {
-  const gk = gradeKey(p.jabatan);
+): {
+  rate: number;
+  scheme: string;
+} {
+  const key = gradeKey(participant.jabatan);
   const scheme = legScheme(leg, origin);
 
-  // TAD & GM: flat 100k per trip regardless of leg
-  // GM = flat Rp100.000 per trip.
-  // TAD / Driver = Rp100.000 per hari.
-  // Nilai TAD tetap mengikuti matrix agar nantinya bisa dikelola,
-  // tetapi insentif jarak dihitung terpisah sebagai flat per trip.
-if (gk === 'GM') {
-  return {
-    rate: 100000,
-    scheme: 'GM Flat',
-  };
-}
+  const grade =
+    matrix[key] ??
+    DEFAULT_MATRIX[key];
 
-if (gk === 'TAD') {
-  const m =
-    matrix[gk] ??
-    DEFAULT_MATRIX[gk];
-
-  return {
-    rate: m.luarKota,
-    scheme: 'TAD Harian',
-  };
-}
-
-  if (scheme === 'DK') {
-    let tier = leg.dkTier ?? '25';
-    if (origin !== 'Head Office BSD' && tier === '25') tier = '50';
-    const currentDK = dkMatrix[gk] ?? DEFAULT_DK_MATRIX[gk];
-    return { rate: currentDK[tier], scheme: `DK ${tier}KM` };
+  /*
+   * GENERAL MANAGER
+   *
+   * GM diberikan flat per trip.
+   * Nominal menggunakan matrix GM,
+   * bukan hardcoded.
+   *
+   * Final total GM akan dikunci kembali
+   * pada perDiemForParticipant().
+   */
+  if (key === 'GM') {
+    return {
+      rate: grade.luarKota,
+      scheme: 'GM Flat',
+    };
   }
-  const m = matrix[gk] ?? DEFAULT_MATRIX[gk];
-  if (scheme === 'KP1') return { rate: m.kp1, scheme: 'KP1' };
-  if (scheme === 'KP2') return { rate: m.kp2, scheme: 'KP2' };
-  if (scheme === 'KPO') return { rate: m.kpo, scheme: 'KPO' };
-  return { rate: m.luarKota, scheme: 'LK' };
+
+  /*
+   * TAD / DRIVER
+   *
+   * Tunjangan harian mengikuti matrix TAD.
+   * Insentif jarak dihitung terpisah.
+   */
+  if (key === 'TAD') {
+    return {
+      rate: grade.luarKota,
+      scheme: 'TAD Harian',
+    };
+  }
+
+  /*
+   * DALAM KOTA
+   */
+  if (scheme === 'DK') {
+    let tier: DKTier =
+      leg.dkTier ?? '25';
+
+    /*
+     * Selain Head Office BSD,
+     * minimum DK adalah 50 KM.
+     */
+    if (
+      origin !== 'Head Office BSD' &&
+      tier === '25'
+    ) {
+      tier = '50';
+    }
+
+    const currentDK =
+      dkMatrix[key] ??
+      DEFAULT_DK_MATRIX[key];
+
+    return {
+      rate: currentDK[tier],
+      scheme: `DK ${tier}KM`,
+    };
+  }
+
+  if (scheme === 'KP1') {
+    return {
+      rate: grade.kp1,
+      scheme: 'KP1',
+    };
+  }
+
+  if (scheme === 'KP2') {
+    return {
+      rate: grade.kp2,
+      scheme: 'KP2',
+    };
+  }
+
+  if (scheme === 'KPO') {
+    return {
+      rate: grade.kpo,
+      scheme: 'KPO',
+    };
+  }
+
+  return {
+    rate: grade.luarKota,
+    scheme: 'LK',
+  };
 }
+
+// =========================================================
+// LEG BREAKDOWN
+// =========================================================
 
 export interface LegBreakdown {
   legIndex: number;
@@ -115,211 +349,583 @@ export interface LegBreakdown {
   amount: number;
 }
 
-// ===== PER-LEG CALCULATION =====
+// =========================================================
+// PER PARTICIPANT
+// =========================================================
 
 function perDiemForParticipant(
-  p: Participant, 
-  itinerary: ItineraryLeg[], 
+  participant: Participant,
+  itinerary: ItineraryLeg[],
   origin: string,
   matrix: DynamicMatrixMap = DEFAULT_MATRIX,
   dkMatrix: DynamicDKMatrixMap = DEFAULT_DK_MATRIX
-): { perDay: number; total: number; hotel: number; driver: number; breakdown: string; legs: LegBreakdown[] } {
-  const gk = gradeKey(p.jabatan);
-  const m = matrix[gk] ?? DEFAULT_MATRIX[gk];
-  const legs: LegBreakdown[] = [];
-  let total = 0;
-  let isLuarKota = 0;
+): {
+  perDay: number;
+  total: number;
+  hotel: number;
+  driver: number;
+  breakdown: string;
+  legs: LegBreakdown[];
+} {
+  const key = gradeKey(participant.jabatan);
 
-  for (let i = 0; i < itinerary.length; i++) {
-    const leg = itinerary[i];
-    const legDays = daysBetween(leg.start_date, leg.end_date);
-    const { rate, scheme } = legRate(p, leg, origin, matrix, dkMatrix);
-    const amount = rate * legDays;
+  const grade =
+    matrix[key] ??
+    DEFAULT_MATRIX[key];
+
+  const legs: LegBreakdown[] = [];
+
+  let total = 0;
+
+  /*
+   * Hari yang eligible akomodasi.
+   *
+   * Akomodasi:
+   * LK / KP1 / KP2 / KPO
+   *
+   * DK tidak mendapatkan akomodasi.
+   */
+  let hotelDays = 0;
+
+  for (
+    let index = 0;
+    index < itinerary.length;
+    index++
+  ) {
+    const leg = itinerary[index];
+
+    const legDays = daysBetween(
+      leg.start_date,
+      leg.end_date
+    );
+
+    const {
+      rate,
+      scheme,
+    } = legRate(
+      participant,
+      leg,
+      origin,
+      matrix,
+      dkMatrix
+    );
+
+    /*
+     * GM flat per trip.
+     *
+     * Supaya breakdown itinerary tetap terbaca,
+     * amount leg GM tidak dijumlahkan sebagai
+     * tunjangan per hari.
+     */
+    const amount =
+      key === 'GM'
+        ? 0
+        : rate * legDays;
+
     total += amount;
-    if (scheme !== 'DK') {hotelDays += legDays;} ;
-    legs.push({ legIndex: i, destination: leg.destination + (leg.destination_custom ? ` (${leg.destination_custom})` : ''), days: legDays, scheme, rate, amount });
+
+    if (
+      scheme !== 'DK' &&
+      legDays > 0
+    ) {
+      hotelDays += legDays;
+    }
+
+    legs.push({
+      legIndex: index,
+      destination:
+        leg.destination +
+        (
+          leg.destination_custom
+            ? ` (${leg.destination_custom})`
+            : ''
+        ),
+      days: legDays,
+      scheme,
+      rate,
+      amount,
+    });
   }
 
-  // GM flat Rp100.000 per trip.
-  // TAD / Driver tetap menggunakan hasil per hari dari itinerary.
-  if (gk === 'GM') {
-  total = 100000;
-}
+  /*
+   * GM = flat per trip.
+   *
+   * Nilai flat mengambil field luarKota
+   * dari matrix GM.
+   */
+  if (key === 'GM') {
+    total = grade.luarKota;
+  }
 
-  // Hotel only for Luar Kota trips
   const tripDays = itinerary.reduce(
-  (s, l) =>
-    s +
-    daysBetween(
-      l.start_date,
-      l.end_date
-    ),
-  0
-);
+    (sum, leg) =>
+      sum +
+      daysBetween(
+        leg.start_date,
+        leg.end_date
+      ),
+    0
+  );
 
-/*
- * Akomodasi hanya untuk hari pada:
- * LK / KP1 / KP2 / KPO.
- * DK tidak mendapat akomodasi.
- */
-const hotel =
-  m.hotel * hotelDays;
-  const perDay = total / Math.max(1, tripDays);
-  const breakdown = legs.map((l) => `${l.scheme} ${formatIDR(l.rate)}×${l.days}d`).join(' + ');
+  const hotel =
+    grade.hotel * hotelDays;
 
-  return { perDay: Math.round(perDay), total, hotel, driver: 0, breakdown, legs };
+  const perDay =
+    total /
+    Math.max(1, tripDays);
+
+  const breakdown =
+    key === 'GM'
+      ? `GM Flat ${formatIDR(total)} / trip`
+      : legs
+          .map(
+            (leg) =>
+              `${leg.scheme} ${formatIDR(
+                leg.rate
+              )}×${leg.days}d`
+          )
+          .join(' + ');
+
+  return {
+    perDay: Math.round(perDay),
+    total,
+    hotel,
+    driver: 0,
+    breakdown,
+    legs,
+  };
 }
 
-// ===== PETTY CASH (return-to-origin logic) =====
+// =========================================================
+// PETTY CASH
+// =========================================================
 
 export function computePettyCash(
-  participants: Participant[], 
+  participants: Participant[],
   itinerary: ItineraryLeg[],
   matrix: DynamicMatrixMap = DEFAULT_MATRIX
-): { total: number; holder: string | null; perPerson: number; trips: number; perPersonBreakdown: { name: string; jabatan: Jabatan; amount: number }[] } {
-  const internalParticipants = participants.filter((p) => (p.category ?? 'Internal') !== 'Eksternal');
-  const pettyCashEligible =
-  itinerary.some((l) => {
-    const scheme =
-      legScheme(l, '');
-
-    return (
-      scheme === 'LK' ||
-      scheme === 'KP2' ||
-      scheme === 'KPO'
+): {
+  total: number;
+  holder: string | null;
+  perPerson: number;
+  trips: number;
+  perPersonBreakdown: {
+    name: string;
+    jabatan: Jabatan;
+    amount: number;
+  }[];
+} {
+  const internalParticipants =
+    participants.filter(
+      (participant) =>
+        (participant.category ?? 'Internal') !==
+        'Eksternal'
     );
-  });
 
-if (
-  !pettyCashEligible ||
-  internalParticipants.length <=
-    1
-) {
-    return { total: 0, holder: null, perPerson: 0, trips: 0, perPersonBreakdown: [] };
+  /*
+   * Pettycash berlaku untuk:
+   * LK / KP2 / KPO
+   *
+   * Mengikuti logic existing.
+   */
+  const pettyCashEligible =
+    itinerary.some((leg) => {
+      const scheme =
+        legScheme(leg, '');
+
+      return (
+        scheme === 'LK' ||
+        scheme === 'KP2' ||
+        scheme === 'KPO'
+      );
+    });
+
+  if (
+    !pettyCashEligible ||
+    internalParticipants.length <= 1
+  ) {
+    return {
+      total: 0,
+      holder: null,
+      perPerson: 0,
+      trips: 0,
+      perPersonBreakdown: [],
+    };
   }
 
-  // Trips = total destinations + 1 (return to origin)
-  const trips = itinerary.length + 1;
+  /*
+   * Jumlah perjalanan pettycash:
+   * destination legs + kembali ke origin.
+   */
+  const trips =
+    itinerary.length + 1;
 
-  const holder = [...internalParticipants].sort((a, b) => JABATAN_RANK[b.jabatan] - JABATAN_RANK[a.jabatan])[0];
-  const holderMatrix = getGradeMatrix(holder.jabatan, matrix);
+  /*
+   * Holder = jabatan tertinggi.
+   */
+  const holder =
+    [...internalParticipants].sort(
+      (a, b) =>
+        JABATAN_RANK[b.jabatan] -
+        JABATAN_RANK[a.jabatan]
+    )[0];
 
-  const perPersonBreakdown = internalParticipants.map((p) => {
-    const m = getGradeMatrix(p.jabatan, matrix);
-    return { name: p.name || '(Belum diisi)', jabatan: p.jabatan, amount: m.pettyCash * trips };
-  });
+  const holderMatrix =
+    getGradeMatrix(
+      holder.jabatan,
+      matrix
+    );
 
-  const total = perPersonBreakdown.reduce((s, p) => s + p.amount, 0);
-  return { total, holder: holder.name, perPerson: holderMatrix.pettyCash, trips, perPersonBreakdown };
+  const perPersonBreakdown =
+    internalParticipants.map(
+      (participant) => {
+        const grade =
+          getGradeMatrix(
+            participant.jabatan,
+            matrix
+          );
+
+        return {
+          name:
+            participant.name ||
+            '(Belum diisi)',
+          jabatan:
+            participant.jabatan,
+          amount:
+            grade.pettyCash *
+            trips,
+        };
+      }
+    );
+
+  const total =
+    perPersonBreakdown.reduce(
+      (sum, participant) =>
+        sum + participant.amount,
+      0
+    );
+
+  return {
+    total,
+    holder: holder.name,
+    perPerson:
+      holderMatrix.pettyCash,
+    trips,
+    perPersonBreakdown,
+  };
 }
 
-// ===== COST BREAKDOWN =====
+// =========================================================
+// COST BREAKDOWN TYPES
+// =========================================================
 
 export interface PerParticipant {
   name: string;
   jabatan: Jabatan;
+
   perDay: number;
   days: number;
+
   total: number;
   hotel: number;
   driver: number;
   pettyCash: number;
+
   breakdown: string;
   legs: LegBreakdown[];
 }
 
 export interface CostBreakdown {
   perParticipant: PerParticipant[];
+
   perDiemTotal: number;
   hotelTotal: number;
   driverTotal: number;
+
   pettyCashTotal: number;
   pettyCashHolder: string | null;
   pettyCashTrips: number;
-  pettyCashPerPersonBreakdown: { name: string; jabatan: Jabatan; amount: number }[];
+
+  pettyCashPerPersonBreakdown: {
+    name: string;
+    jabatan: Jabatan;
+    amount: number;
+  }[];
+
   fuelCost: number;
   etollCost: number;
+
   grandTotal: number;
 }
+
+// =========================================================
+// COMPUTE COST
+// =========================================================
 
 export function computeCost(params: {
   participants: Participant[];
   days: number;
+
   itinerary: ItineraryLeg[];
   origin: string;
+
   tripCategory: TripCategory;
   kpScheme: KPScheme;
+
   needsDriver: boolean;
-  totalDistance?: TotalDistanceOption; // Opsi Jarak Total (>200km / >400km)
+
+  totalDistance?: TotalDistanceOption;
+
   fuelCost?: number;
   etollCost?: number;
+
   hotelByHR?: boolean;
+
   matrix?: DynamicMatrixMap;
   dkMatrix?: DynamicDKMatrixMap;
+
+  driverIncentive?: DriverIncentiveSettings;
 }): CostBreakdown {
-  const { 
-    participants, itinerary, origin, 
-    needsDriver, totalDistance = 'none',
-    fuelCost = 0, etollCost = 0, hotelByHR = true,
-    matrix = DEFAULT_MATRIX, dkMatrix = DEFAULT_DK_MATRIX 
+  const {
+    participants,
+    itinerary,
+    origin,
+
+    needsDriver,
+
+    totalDistance = 'none',
+
+    fuelCost = 0,
+    etollCost = 0,
+
+    hotelByHR = true,
+
+    matrix = DEFAULT_MATRIX,
+    dkMatrix = DEFAULT_DK_MATRIX,
+
+    driverIncentive =
+      DEFAULT_DRIVER_INCENTIVE,
   } = params;
 
-  // Hitung insentif tambahan jarak untuk Driver (flat per trip)
-  let driverIncentive = 0;
+  // =======================================================
+  // DRIVER DISTANCE INCENTIVE
+  // Flat per trip, bukan per hari.
+  // =======================================================
+
+  let driverDistanceIncentive = 0;
+
   if (totalDistance === 'gt200') {
-    driverIncentive = 50000;
-  } else if (totalDistance === 'gt400') {
-    driverIncentive = 100000;
+    driverDistanceIncentive =
+      driverIncentive.gt200;
   }
 
-  const petty = computePettyCash(participants, itinerary, matrix);
+  if (totalDistance === 'gt400') {
+    driverDistanceIncentive =
+      driverIncentive.gt400;
+  }
 
-  const internalParticipants = participants.filter((p) => (p.category ?? 'Internal') !== 'Eksternal');
-  const perParticipant: PerParticipant[] = internalParticipants.map((p) => {
-    const pp = perDiemForParticipant(p, itinerary, origin, matrix, dkMatrix);
-    const hotel = hotelByHR ? 0 : pp.hotel;
-    const pettyAmount = petty.perPersonBreakdown.find((pb) => pb.name === (p.name || '(Belum diisi)'))?.amount ?? 0;
-    
-    // Tambahkan insentif jika peserta ber-Jabatan Driver
-    const isDriver = p.jabatan === 'Driver';
-    const driverBonus = isDriver ? driverIncentive : 0;
-    const breakdownText = isDriver && driverBonus > 0 
-      ? `${pp.breakdown} + Insentif Jarak (${formatIDR(driverBonus)})` 
-      : pp.breakdown;
+  // =======================================================
+  // PETTY CASH
+  // =======================================================
 
-    return {
-      name: p.name || '(Belum diisi)',
-      jabatan: p.jabatan,
-      perDay: pp.perDay,
-      days: itinerary.reduce((s, l) => s + daysBetween(l.start_date, l.end_date), 0),
-      total: pp.total,
-      hotel,
-      driver: pp.driver + driverBonus,
-      pettyCash: pettyAmount,
-      breakdown: breakdownText,
-      legs: pp.legs,
-    };
-  });
+  const petty =
+    computePettyCash(
+      participants,
+      itinerary,
+      matrix
+    );
 
-  const perDiemTotal = perParticipant.reduce((s, p) => s + p.total, 0);
-  const hotelTotal = perParticipant.reduce((s, p) => s + p.hotel, 0);
-  
-  // Total Driver = akumulasi dari peserta Driver + insentif driver luar jika butuh driver tapi tak ada di daftar peserta
-  const driverInParticipants = participants.some((p) => p.jabatan === 'Driver');
-  const externalDriverIncentive = (needsDriver && !driverInParticipants) ? driverIncentive : 0;
-  const driverTotal = perParticipant.reduce((s, p) => s + p.driver, 0) + externalDriverIncentive;
-  
-  const pettyCashTotal = petty.total;
-  const grandTotal = perDiemTotal + hotelTotal + driverTotal + pettyCashTotal + fuelCost + etollCost;
+  const internalParticipants =
+    participants.filter(
+      (participant) =>
+        (participant.category ?? 'Internal') !==
+        'Eksternal'
+    );
+
+  const tripDays =
+    itinerary.reduce(
+      (sum, leg) =>
+        sum +
+        daysBetween(
+          leg.start_date,
+          leg.end_date
+        ),
+      0
+    );
+
+  // =======================================================
+  // PARTICIPANTS
+  // =======================================================
+
+  const perParticipant:
+    PerParticipant[] =
+    internalParticipants.map(
+      (participant) => {
+        const participantCost =
+          perDiemForParticipant(
+            participant,
+            itinerary,
+            origin,
+            matrix,
+            dkMatrix
+          );
+
+        /*
+         * Jika hotel diatur HR,
+         * accommodation advance = 0.
+         */
+        const hotel =
+          hotelByHR
+            ? 0
+            : participantCost.hotel;
+
+        const pettyAmount =
+          petty.perPersonBreakdown.find(
+            (item) =>
+              item.name ===
+              (
+                participant.name ||
+                '(Belum diisi)'
+              )
+          )?.amount ?? 0;
+
+        /*
+         * Driver yang memang tercatat sebagai
+         * participant menerima incentive jarak.
+         */
+        const isDriver =
+          participant.jabatan ===
+          'Driver';
+
+        const driverBonus =
+          isDriver
+            ? driverDistanceIncentive
+            : 0;
+
+        const breakdown =
+          isDriver &&
+          driverBonus > 0
+            ? `${participantCost.breakdown} + Insentif Jarak (${formatIDR(
+                driverBonus
+              )})`
+            : participantCost.breakdown;
+
+        return {
+          name:
+            participant.name ||
+            '(Belum diisi)',
+
+          jabatan:
+            participant.jabatan,
+
+          perDay:
+            participantCost.perDay,
+
+          days:
+            tripDays,
+
+          total:
+            participantCost.total,
+
+          hotel,
+
+          driver:
+            participantCost.driver +
+            driverBonus,
+
+          pettyCash:
+            pettyAmount,
+
+          breakdown,
+
+          legs:
+            participantCost.legs,
+        };
+      }
+    );
+
+  // =======================================================
+  // TOTAL
+  // =======================================================
+
+  const perDiemTotal =
+    perParticipant.reduce(
+      (sum, participant) =>
+        sum + participant.total,
+      0
+    );
+
+  const hotelTotal =
+    perParticipant.reduce(
+      (sum, participant) =>
+        sum + participant.hotel,
+      0
+    );
+
+  /*
+   * Kondisi request hanya driver:
+   *
+   * Driver bisa tidak tercatat sebagai participant.
+   * Jika needsDriver = true dan tidak ada participant
+   * berjabatan Driver, incentive tetap dihitung.
+   */
+  const driverInParticipants =
+    participants.some(
+      (participant) =>
+        participant.jabatan ===
+        'Driver'
+    );
+
+  const externalDriverIncentive =
+    needsDriver &&
+    !driverInParticipants
+      ? driverDistanceIncentive
+      : 0;
+
+  const driverTotal =
+    perParticipant.reduce(
+      (sum, participant) =>
+        sum + participant.driver,
+      0
+    ) +
+    externalDriverIncentive;
+
+  const pettyCashTotal =
+    petty.total;
+
+  const grandTotal =
+    perDiemTotal +
+    hotelTotal +
+    driverTotal +
+    pettyCashTotal +
+    fuelCost +
+    etollCost;
 
   return {
-    perParticipant, perDiemTotal, hotelTotal, driverTotal,
-    pettyCashTotal, pettyCashHolder: petty.holder, pettyCashTrips: petty.trips,
-    pettyCashPerPersonBreakdown: petty.perPersonBreakdown,
-    fuelCost, etollCost, grandTotal,
+    perParticipant,
+
+    perDiemTotal,
+    hotelTotal,
+    driverTotal,
+
+    pettyCashTotal,
+    pettyCashHolder:
+      petty.holder,
+    pettyCashTrips:
+      petty.trips,
+
+    pettyCashPerPersonBreakdown:
+      petty.perPersonBreakdown,
+
+    fuelCost,
+    etollCost,
+
+    grandTotal,
   };
 }
 
+// ===== KP SCHEME AUTO-DETECTION =====
+// PERTAHANKAN SEMUA CODE EXISTING MULAI BAGIAN INI KE BAWAH
 // ===== KP SCHEME AUTO-DETECTION =====
 
 export function autoKPSchemeForLeg(destination: string, current: KPScheme): KPScheme {
