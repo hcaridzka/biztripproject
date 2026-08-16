@@ -114,10 +114,12 @@ export interface SettlementReceipt {
   category: string;
   description: string;
   amount: number;
-  file_name: string | null;
-  hr_status: string;
+  file_name?: string | null;
+  file_base64: string | null;
+  hr_status: 'pending' | 'approved' | 'partial' | 'rejected';
   hr_approved_amount: number | null;
   hr_note: string | null;
+  created_at?: string;
 }
 
 export interface Vehicle {
