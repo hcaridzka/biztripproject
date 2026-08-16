@@ -17,6 +17,7 @@ import { FleetManagement } from './components/FleetManagement';
 import { PdfPrint } from './components/PdfPrint';
 import { ToastHost } from './components/ui-shared';
 import { AccountSettings } from './components/AccountSettings';
+import { MatrixManagement } from './components/MatrixManagement';
 
 function Shell() {
   const { profile, loading } = useAuth();
