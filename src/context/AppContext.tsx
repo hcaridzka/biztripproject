@@ -71,6 +71,13 @@ interface TravelSettingRow {
   is_active: boolean;
 }
 
+export interface PTMasterRow {
+  id: string;
+  name: string;
+  code: string | null;
+  is_active: boolean;
+}
+
 interface AppCtx {
   trips: BizTrip[];
 
@@ -103,6 +110,10 @@ interface AppCtx {
   travelMatrixRows: TravelGradeMatrixRow[];
 
   travelSettingsRows: TravelSettingRow[];
+
+  ptMaster: PTMasterRow[];
+  
+  activePTMaster: PTMasterRow[];
 
   // =======================================================
   // ACTIONS
@@ -251,6 +262,17 @@ export function AppProvider({
     useState<
       TravelSettingRow[]
     >([]);
+
+  const [
+  ptMaster,
+  setPtMaster,
+] =
+  useState<PTMasterRow[]>([]);
+
+  const activePTMaster =
+  ptMaster.filter(
+    (pt) => pt.is_active
+  );
 
   // =======================================================
   // UI STATE
@@ -550,6 +572,8 @@ export function AppProvider({
             matrixResult,
 
             settingResult,
+
+            ptMasterResult,
           ] =
             await Promise.all([
               supabase
@@ -676,6 +700,27 @@ export function AppProvider({
                 ),
             ]);
 
+          supabase
+  .from(
+    'travel_settings'
+  )
+  .select('*')
+  .order(
+    'setting_name',
+    {
+      ascending: true,
+    }
+  ),
+
+supabase
+  .from('pt_master')
+  .select(
+    'id, name, code, is_active'
+  )
+  .order('name', {
+    ascending: true,
+  }),
+]);
           // ===============================================
           // CORE DATA
           // ===============================================
@@ -861,6 +906,25 @@ export function AppProvider({
               rows
             );
           }
+
+          // ===============================================
+// MASTER PT
+// ===============================================
+
+if (ptMasterResult.error) {
+  console.error(
+    'pt_master error',
+    ptMasterResult.error
+  );
+} else {
+  setPtMaster(
+    (
+      ptMasterResult.data ??
+      []
+    ) as PTMasterRow[]
+  );
+}
+          
         } catch (error) {
           console.error(
             'refresh error',
@@ -1075,6 +1139,10 @@ export function AppProvider({
         travelMatrixRows,
 
         travelSettingsRows,
+
+        // Master Pt
+        ptMaster,
+        activePTMaster
 
         // Actions
         refresh,
