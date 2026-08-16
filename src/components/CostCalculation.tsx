@@ -72,12 +72,14 @@ export function CostCalculation({
   const {
     trips,
     disburseRows,
+    
     updateTrip,
     showToast,
     refresh,
+    
     travelMatrix,
     travelDKMatrix,
-    driverincentive
+    driverIncentive
   } = useApp();
 
   const [selected, setSelected] =
@@ -449,55 +451,57 @@ export function CostCalculation({
        * MATRIX DEFAULT
        */
       const base =
-        computeCost({
-          participants:
-            selected.participants ??
-            [],
+  computeCost({
+    participants:
+      selected.participants ??
+      [],
 
-          days:
-            totalDays,
+    days:
+      totalDays,
 
-          itinerary:
-            selected.itinerary ??
-            [],
+    itinerary:
+      selected.itinerary ??
+      [],
 
-          origin:
-            selected.origin,
+    origin:
+      selected.origin,
 
-          tripCategory:
-            effectiveTripCategory,
+    tripCategory:
+      effectiveTripCategory,
 
-          kpScheme:
-            effectiveKpScheme,
+    kpScheme:
+      effectiveKpScheme,
 
-          needsDriver:
-            selected.needs_driver,
+    needsDriver:
+      selected.needs_driver,
 
-          /*
-           * Driver distance incentive.
-           */
-          totalDistance:
-            selected.total_distance ??
-            'none',
+    /*
+     * Driver distance incentive
+     */
+    totalDistance:
+      selected.total_distance ??
+      'none',
 
-          fuelCost:
-            manualFuel,
+    fuelCost:
+      manualFuel,
 
-          etollCost:
-            manualEtoll,
+    etollCost:
+      manualEtoll,
 
-          hotelByHR,
-          allowanceOverride,
-      hotelOverride,
-      driverOverride,
-      pettyOverride,
-      externalDriverOverride,
-      extraRows,
+    hotelByHR,
 
+    /*
+     * Dynamic Matrix from Supabase
+     */
+    matrix:
       travelMatrix,
+
+    dkMatrix:
       travelDKMatrix,
+
+    driverIncentive:
       driverIncentive,
-        });
+  });
 
       /*
        * DRIVER EXTERNAL
