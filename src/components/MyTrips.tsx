@@ -356,7 +356,7 @@ const dateDiffInDays = (oldDate: string, newDate: string) => {
                   )}
                   {canCancel && (
                     <>
-                      <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5 text-brand-600" />} onClick={(e) => { e.stopPropagation(); openReschedule(selected); }}>Reschedule</Button>
+                      <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5 text-brand-600" />} onClick={(e) => { e.stopPropagation(); openReschedule (t); }}>Reschedule</Button>
                       <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={(e) => { e.stopPropagation(); setCancelTrip(t); setCancelReason(''); }}>Cancel Trip</Button>
                     </>
                   )}
