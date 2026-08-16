@@ -104,6 +104,7 @@ function Shell() {
 )}
         {view === 'summary' && <SummaryExport />}
         {view === 'user-management' && <UserManagement />}
+        {view === 'matrix-management' && <MatrixManagement />}
         {view === 'account' && <AccountSettings />}
         {view === 'vehicles' && <FleetManagement />}
       </Layout>
