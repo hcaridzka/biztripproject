@@ -8,7 +8,11 @@ import { supabase } from '../lib/supabase';
 import { PdfPrint } from './PdfPrint';
 import type { BizTrip } from '../lib/types';
 
-export function PicObligo() {
+export function PicObligo() { import {
+  useState,
+  useMemo,
+  useEffect,
+} from 'react';
   const { profile } = useAuth();
   const { trips, vehicles, drivers, updateTrip, showToast, refresh } = useApp();
   const [selected, setSelected] = useState<BizTrip | null>(null);
@@ -23,7 +27,7 @@ export function PicObligo() {
 
   // Antrean khusus trip dengan status 'Pending PIC Obligo Approval' dari seluruh PT (tanpa batasan pt_access)
   const queue = useMemo(() => {
-    return trips.filter((t) => t.status === 'Pending PIC Obligo Approval');
+    return trips.filter((t) => t.status === 'Pending PIC Obligo');
   }, [trips]);
 
   const startReview = (t: BizTrip) => {
@@ -36,7 +40,20 @@ export function PicObligo() {
     setEtollCost(Number(t.etoll_cost) || 0);
     setNote(t.obligo_note ?? '');
   };
+useEffect(() => {
+  if (!selectedTripId) return;
 
+  const trip = trips.find(
+    (t) =>
+      t.id === selectedTripId &&
+      t.status === 'Pending PIC Obligo'
+  );
+
+  if (trip) {
+    startReview(trip);
+  }
+}, [selectedTripId, trips]);
+                             
   const submit = async () => {
     if (!selected) return;
     if (!vehiclePlate.trim()) { showToast('error', 'Nomor plat wajib diisi'); return; }
@@ -60,7 +77,7 @@ export function PicObligo() {
         actor_name: profile?.name ?? '', 
         actor_role: 'PIC Obligo', 
         action: 'Vehicle assigned -> Pending Direksi', 
-        from_status: 'Pending PIC Obligo Approval', 
+        from_status: 'Pending PIC Obligo', 
         to_status: 'Pending Direksi Approval', 
         remarks: `${vehiclePlate} · BBM ${fuelCost} · Toll ${etollCost}` 
       });
