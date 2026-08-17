@@ -79,9 +79,6 @@ export function CostCalculation({
   travelMatrix,
   travelDKMatrix,
   driverIncentive,
-
-  ptMaster,
-  activePTMaster,
 } = useApp();
 
   const [selected, setSelected] =
