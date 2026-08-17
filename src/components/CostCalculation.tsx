@@ -142,11 +142,11 @@ export function CostCalculation({
    * yang tidak menjadi participant.
    */
   const [
-    externalDriverOverride,
-    setExternalDriverOverride,
-  ] = useState<number | null>(
-    null
-  );
+  assignedDriverCostOverride,
+  setAssignedDriverCostOverride,
+] = useState<number | null>(
+  null
+);
 
   const [
     spdNumber,
@@ -319,14 +319,19 @@ export function CostCalculation({
       pettyMap
     );
 
-    setExternalDriverOverride(
-      saved.externalDriverIncentive !==
+    ssetAssignedDriverCostOverride(
+  saved.assignedDriverCost !==
+    undefined
+    ? Number(
+        saved.assignedDriverCost
+      ) || 0
+    : saved.assignedDriverCost !==
         undefined
-        ? Number(
-            saved.externalDriverIncentive
-          ) || 0
-        : null
-    );
+      ? Number(
+          saved.assignedDriverCost
+        ) || 0
+      : null
+);
 
     const defaultSpd =
       generateSpdNumber(
@@ -505,26 +510,6 @@ export function CostCalculation({
   });
 
       /*
-       * DRIVER EXTERNAL
-       */
-      const participantDriverBase =
-        base.perParticipant.reduce(
-          (sum, pp) =>
-            sum +
-            Number(
-              pp.driver || 0
-            ),
-          0
-        );
-
-      const baseExternalDriver =
-        Math.max(
-          0,
-          base.driverTotal -
-            participantDriverBase
-        );
-
-      /*
        * APPLY HR OVERRIDE
        */
       const perParticipant =
@@ -608,13 +593,14 @@ export function CostCalculation({
           0
         );
 
-      const externalDriverIncentive =
-        externalDriverOverride ??
-        baseExternalDriver;
+      const assignedDriverCost =
+  assignedDriverCostOverride ??
+  base.driverTotal;
 
-      const driverTotal =
-        participantDriverTotal +
-        externalDriverIncentive;
+const driverTotal =
+  Number(
+    assignedDriverCost
+  ) || 0;
 
       const pettyCashTotal =
         perParticipant.reduce(
@@ -659,7 +645,7 @@ export function CostCalculation({
 
         extraTotal,
 
-        externalDriverIncentive,
+        assignedDriverCost,
 
         effectiveKpScheme,
 
@@ -677,7 +663,7 @@ export function CostCalculation({
       hotelOverride,
       driverOverride,
       pettyOverride,
-      externalDriverOverride,
+      assignedDriverCostOverride,
       extraRows,
 
       travelMatrix,
@@ -794,7 +780,7 @@ const getPTOptions = (
                 pp.driver,
 
               keterangan:
-                'Insentif Jarak Driver',
+                'Tunjangan & Insentif Driver',
 
               pt_burden:
                 defaultPT,
@@ -828,7 +814,7 @@ const getPTOptions = (
        * bukan participant.
        */
       if (
-        cost.externalDriverIncentive >
+        cost.assignedDriverCost >
         0
       ) {
         rows.push({
@@ -839,7 +825,7 @@ const getPTOptions = (
             'Driver',
 
           nominal:
-            cost.externalDriverIncentive,
+            cost.assignedDriverCost,
 
           keterangan:
             'Insentif Jarak Driver',
@@ -1052,8 +1038,21 @@ const getPTOptions = (
         perParticipant:
           cost.perParticipant,
 
-        externalDriverIncentive:
-          cost.externalDriverIncentive,
+        assignedDriverName:
+  selected
+    ?.obligo_driver_name ??
+  null,
+
+assignedDriverCost:
+  cost.assignedDriverCost,
+
+/*
+ * Compatibility untuk record lama.
+ * Nanti setelah seluruh histori aman,
+ * legacy key ini bisa dibuang.
+ */
+externalDriverIncentive:
+  cost.assignedDriverCost,
 
         pettyCashHolder:
           cost.pettyCashHolder,
@@ -1071,7 +1070,7 @@ const getPTOptions = (
           accommodation:
             cost.hotelTotal,
 
-          driverIncentive:
+          driverCost:
             cost.driverTotal,
 
           pettyCash:
@@ -1828,7 +1827,7 @@ const getPTOptions = (
                   )}
 
                   {selected.needs_driver &&
-                    cost.externalDriverIncentive >=
+                    cost.assignedDriverCost >=
                       0 && (
 
                     <tr className="bg-emerald-50/40">
@@ -1860,10 +1859,10 @@ const getPTOptions = (
                           type="number"
                           min={0}
                           value={
-                            cost.externalDriverIncentive
+                            cost.assignedDriverCost
                           }
                           onChange={(e) =>
-                            setExternalDriverOverride(
+                            setAssignedDriverCostOverride(
                               parseFloat(
                                 e.target.value
                               ) || 0
@@ -1880,7 +1879,7 @@ const getPTOptions = (
 
                       <td className="border border-slate-200 px-2 py-2 text-right font-bold">
                         {formatIDR(
-                          cost.externalDriverIncentive
+                          cost.assignedDriverCost
                         )}
                       </td>
 
