@@ -87,22 +87,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const buildTravelMatrix = useCallback((rows: TravelGradeMatrixRow[]) => {
     const nextMatrix: DynamicMatrixMap = {
-      Direksi: { ...DEFAULT_MATRIX.Direksi },
-      'Head/TL': { ...DEFAULT_MATRIX['Head/TL'] },
-      Staff: { ...DEFAULT_MATRIX.Staff },
-      GM: { ...DEFAULT_MATRIX.GM },
-      TAD: { ...DEFAULT_MATRIX.TAD },
+      ...Object.fromEntries(Object.entries(DEFAULT_MATRIX).map(([key, value]) => [key, { ...value }])),
     };
     const nextDK: DynamicDKMatrixMap = {
-      Direksi: { ...DEFAULT_DK_MATRIX.Direksi },
-      'Head/TL': { ...DEFAULT_DK_MATRIX['Head/TL'] },
-      Staff: { ...DEFAULT_DK_MATRIX.Staff },
-      GM: { ...DEFAULT_DK_MATRIX.GM },
-      TAD: { ...DEFAULT_DK_MATRIX.TAD },
+      ...Object.fromEntries(Object.entries(DEFAULT_DK_MATRIX).map(([key, value]) => [key, { ...value }])),
     };
-    rows.filter((row) => row.is_active).forEach((row) => {
-      const key = row.grade_key;
-      if (!nextMatrix[key] || !nextDK[key]) return;
+
+    rows.filter((row) => row.is_active && String(row.grade_key).trim()).forEach((row) => {
+      const key = String(row.grade_key).trim();
       nextMatrix[key] = {
         luarKota: Number(row.luar_kota) || 0,
         kp1: Number(row.kp1) || 0,
@@ -117,6 +109,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         '100': Number(row.dk_100) || 0,
       };
     });
+
     setTravelMatrix(nextMatrix);
     setTravelDKMatrix(nextDK);
   }, []);
@@ -203,9 +196,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteTrip = useCallback(async (id: string) => {
-    // Explicit cleanup makes HR delete deterministic even when a deployment
-    // does not yet have ON DELETE CASCADE on every child foreign key.
-    // Delete child rows first, then the parent trip.
     const childTables = [
       'settlement_receipts',
       'settlement_claim_rows',
