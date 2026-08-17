@@ -33,18 +33,19 @@ function Shell() {
   if (!profile) return <><Login /><ToastHost toasts={toasts} onDismiss={dismissToast} /></>;
 
   const handlePrint = (id: string) => setPrintTrip({ id, mode: 'advance' });
+  const handleSettlementPrint = (id: string) => setPrintTrip({ id, mode: 'settlement' });
 
   return (
     <>
       <Layout view={view} setView={setView}>
         {view === 'dashboard' && <Dashboard setView={setView} setSelectedTrip={setSelectedTrip} />}
         {view === 'new-request' && <RequestForm onDone={() => setView('my-trips')} />}
-        {view === 'my-trips' && <MyTrips onPrint={handlePrint} selectedTripId={selectedTrip} />}
+        {view === 'my-trips' && <MyTrips onPrint={handlePrint} onPrintSettlement={handleSettlementPrint} selectedTripId={selectedTrip} />}
         {view === 'approval' && <ApprovalDashboard setSelectedTrip={setSelectedTrip} setView={setView} />}
         {view === 'pic-obligo' && <PicObligo selectedTripId={selectedTrip} />}
         {view === 'cost-review' && <CostCalculation onPrint={handlePrint} selectedTripId={selectedTrip} />}
         {view === 'settlement' && <SettlementForm setSelectedTrip={setSelectedTrip} />}
-        {view === 'settlement-review' && <SettlementReview onPrint={(id) => setPrintTrip({ id, mode: 'settlement' })} />}
+        {view === 'settlement-review' && <SettlementReview onPrint={handleSettlementPrint} />}
         {view === 'trip-management' && <TripManagement />}
         {view === 'summary' && <SummaryExport />}
         {view === 'user-management' && <UserManagement />}
@@ -60,5 +61,5 @@ function Shell() {
 }
 
 export default function App() {
-  return <AuthProvider><AppProvider><Shell /></AppProvider></AuthProvider>;
+  return <AuthProvider><AppProvider><Shell /></AuthProvider>;
 }
