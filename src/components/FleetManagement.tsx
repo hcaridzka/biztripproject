@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
-import { Truck, Plus, Trash2, Car, User } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Truck, Trash2, Car, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Card, Button, Input, Field, EmptyState, formatIDR } from './ui-shared';
+import { Card, Button, Input, Field, EmptyState, formatIDR, Modal } from './ui-shared';
 import { uid } from '../lib/utils';
 import { supabase } from '../lib/supabase';
-import type { Vehicle, Driver } from '../lib/types';
 
 export function FleetManagement() {
   const { vehicles, drivers, showToast, refresh } = useApp();
@@ -12,6 +11,15 @@ export function FleetManagement() {
   const [showAddD, setShowAddD] = useState(false);
   const [newV, setNewV] = useState({ plate_number: '', vehicle_type: '', current_km: 0, fuel_monthly_cost: 0, assigned_driver: '' });
   const [newD, setNewD] = useState({ name: '', license_number: '', phone: '', assigned_vehicle: '' });
+
+  const sortedVehicles = useMemo(
+    () => [...vehicles].sort((a, b) => String(a.plate_number).localeCompare(String(b.plate_number), 'id')),
+    [vehicles]
+  );
+  const sortedDrivers = useMemo(
+    () => [...drivers].sort((a, b) => String(a.name).localeCompare(String(b.name), 'id')),
+    [drivers]
+  );
 
   const addVehicle = async () => {
     if (!newV.plate_number.trim()) { showToast('error', 'Plat nomor wajib diisi'); return; }
@@ -35,14 +43,16 @@ export function FleetManagement() {
 
   const deleteVehicle = async (id: string) => {
     if (!confirm('Hapus kendaraan ini?')) return;
-    await supabase.from('vehicles').delete().eq('id', id);
+    const { error } = await supabase.from('vehicles').delete().eq('id', id);
+    if (error) { showToast('error', 'Gagal menghapus kendaraan: ' + error.message); return; }
     showToast('success', 'Kendaraan dihapus');
     refresh();
   };
 
   const deleteDriver = async (id: string) => {
     if (!confirm('Hapus driver ini?')) return;
-    await supabase.from('drivers').delete().eq('id', id);
+    const { error } = await supabase.from('drivers').delete().eq('id', id);
+    if (error) { showToast('error', 'Gagal menghapus driver: ' + error.message); return; }
     showToast('success', 'Driver dihapus');
     refresh();
   };
@@ -63,9 +73,9 @@ export function FleetManagement() {
 
       <Card className="p-6">
         <h3 className="text-sm font-bold text-slate-800 mb-3">Kendaraan Dinas</h3>
-        {vehicles.length === 0 ? <EmptyState icon={<Truck className="w-6 h-6" />} title="Belum ada kendaraan" /> : (
+        {sortedVehicles.length === 0 ? <EmptyState icon={<Truck className="w-6 h-6" />} title="Belum ada kendaraan" /> : (
           <div className="space-y-2">
-            {vehicles.map((v) => (
+            {sortedVehicles.map((v) => (
               <div key={v.id} className="flex items-center justify-between rounded-xl ring-1 ring-slate-100 p-3">
                 <div>
                   <div className="text-sm font-semibold text-slate-800">{v.plate_number}</div>
@@ -83,9 +93,9 @@ export function FleetManagement() {
 
       <Card className="p-6">
         <h3 className="text-sm font-bold text-slate-800 mb-3">Driver</h3>
-        {drivers.length === 0 ? <EmptyState icon={<User className="w-6 h-6" />} title="Belum ada driver" /> : (
+        {sortedDrivers.length === 0 ? <EmptyState icon={<User className="w-6 h-6" />} title="Belum ada driver" /> : (
           <div className="space-y-2">
-            {drivers.map((d) => (
+            {sortedDrivers.map((d) => (
               <div key={d.id} className="flex items-center justify-between rounded-xl ring-1 ring-slate-100 p-3">
                 <div>
                   <div className="text-sm font-semibold text-slate-800">{d.name}</div>
@@ -98,9 +108,8 @@ export function FleetManagement() {
         )}
       </Card>
 
-      {showAddV && (
-        <Card className="p-6 space-y-4">
-          <h3 className="text-sm font-bold text-slate-800">Add Vehicle</h3>
+      <Modal open={showAddV} onClose={() => setShowAddV(false)} title="Add Vehicle" size="lg">
+        <div className="space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
             <Field label="Plat Nomor" required><Input value={newV.plate_number} onChange={(e) => setNewV({ ...newV, plate_number: e.target.value })} placeholder="B 1234 ABC" /></Field>
             <Field label="Jenis Kendaraan"><Input value={newV.vehicle_type} onChange={(e) => setNewV({ ...newV, vehicle_type: e.target.value })} placeholder="Toyota Innova" /></Field>
@@ -108,24 +117,21 @@ export function FleetManagement() {
             <Field label="Fuel Cost/Bulan"><Input type="number" value={newV.fuel_monthly_cost} onChange={(e) => setNewV({ ...newV, fuel_monthly_cost: parseFloat(e.target.value) || 0 })} /></Field>
             <Field label="Assigned Driver"><Input value={newV.assigned_driver} onChange={(e) => setNewV({ ...newV, assigned_driver: e.target.value })} /></Field>
           </div>
-          <div className="flex gap-2 justify-end"><Button variant="secondary" size="sm" onClick={() => setShowAddV(false)}>Cancel</Button><Button size="sm" onClick={addVehicle}>Add</Button></div>
-        </Card>
-      )}
+          <div className="flex gap-2 justify-end"><Button variant="secondary" size="sm" onClick={() => setShowAddV(false)}>Cancel</Button><Button size="sm" onClick={addVehicle}>Add Vehicle</Button></div>
+        </div>
+      </Modal>
 
-      {showAddD && (
-        <Card className="p-6 space-y-4">
-          <h3 className="text-sm font-bold text-slate-800">Add Driver</h3>
+      <Modal open={showAddD} onClose={() => setShowAddD(false)} title="Add Driver" size="lg">
+        <div className="space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
             <Field label="Nama" required><Input value={newD.name} onChange={(e) => setNewD({ ...newD, name: e.target.value })} /></Field>
             <Field label="License Number"><Input value={newD.license_number} onChange={(e) => setNewD({ ...newD, license_number: e.target.value })} /></Field>
             <Field label="Phone"><Input value={newD.phone} onChange={(e) => setNewD({ ...newD, phone: e.target.value })} /></Field>
             <Field label="Assigned Vehicle"><Input value={newD.assigned_vehicle} onChange={(e) => setNewD({ ...newD, assigned_vehicle: e.target.value })} placeholder="Plat nomor" /></Field>
           </div>
-          <div className="flex gap-2 justify-end"><Button variant="secondary" size="sm" onClick={() => setShowAddD(false)}>Cancel</Button><Button size="sm" onClick={addDriver}>Add</Button></div>
-        </Card>
-      )}
+          <div className="flex gap-2 justify-end"><Button variant="secondary" size="sm" onClick={() => setShowAddD(false)}>Cancel</Button><Button size="sm" onClick={addDriver}>Add Driver</Button></div>
+        </div>
+      </Modal>
     </div>
   );
 }
-
-void useEffect;
