@@ -516,11 +516,13 @@ export function computePettyCash(
   }[];
 } {
   const internalParticipants =
-    participants.filter(
-      (participant) =>
-        (participant.category ?? 'Internal') !==
-        'Eksternal'
-    );
+  participants.filter(
+    (participant) =>
+      (participant.category ?? 'Internal') !==
+        'Eksternal' &&
+      participant.jabatan !==
+        'Driver'
+  );
 
   /*
    * Pettycash berlaku untuk:
