@@ -7,17 +7,17 @@ export type TransportChoice = 'Kendaraan Dinas' | 'Transportasi Umum' | 'Kendara
 export type TripCategory = 'within_city_25km' | 'within_city_50km' | 'within_city_100km' | 'luar_kota' | null;
 export type ParticipantCategory = 'Internal' | 'Eksternal';
 
-export interface Participant { id: string; name: string; jabatan: Jabatan; grade?: string; category?: ParticipantCategory; keterangan?: string; pt_unit?: string; }
-export interface PerParticipant { name: string; grade?: string; jabatan?: Jabatan; pt_unit?: string; perDay?: number; days?: number; allowanceTotal?: number; hotelTotal?: number; hotel?: number; driver?: number; pettyCashTotal?: number; pettyCash?: number; total?: number; breakdown?: string; legs?: any[]; }
+export interface Participant { id: string; name: string; jabatan: Jabatan; grade?: string; category?: ParticipantCategory; keterangan?: string; pt_unit?: string; user_id?: string | null; nip?: string | null; }
+export interface PerParticipant { name: string; grade?: string; jabatan?: Jabatan; pt_unit?: string; perDay?: number; days?: number; allowanceTotal?: number; hotelTotal?: number; hotel?: number; driver?: number; pettyCashTotal?: number; pettyCash?: number; total?: number; breakdown?: string; legs?: any[]; participant_id?: string; user_id?: string | null; nip?: string | null; }
 export interface ItineraryLeg { id: string; start_date: string; start_time: string; end_date: string; end_time: string; destination: string; destination_custom: string; kpScheme: KPScheme; isWithinCity: boolean; isLuarkota: boolean; dkTier?: DKTier; agenda: string; }
 export interface Profile { id: string; email: string; role: Role; name: string; nip: string | null; jabatan: Jabatan; grade?: string; pt_unit?: string; pt_access: string[]; is_super_admin: boolean; is_demo: boolean; }
 
-export type TripStatus = 'Draft' | 'Pending Manager Approval' | 'Pending PIC Obligo' | 'Pending Direksi Approval' | 'Pending HR Advance Review' | 'Approved / Ready for Trip' | 'On Trip' | 'Pending Settlement' | 'Pending HR Settlement Review' | 'Pending Refund' | 'Pending Refund Verification' | 'Completed' | 'Rejected';
+export type TripStatus = 'Draft' | 'Pending Manager Approval' | 'Pending PIC Obligo' | 'Pending Direksi Approval' | 'Pending HR Advance Review' | 'Approved / Ready for Trip' | 'On Trip' | 'Pending Settlement' | 'Pending HR Settlement Review' | 'Pending Refund' | 'Pending Refund Verification' | 'Pending Reimbursement Approval' | 'Pending HR Finance Process' | 'Completed' | 'Rejected';
 export interface DisburseRow { id: string; trip_id: string; name: string; nominal: number; component_note: string; pt_burden: string; sort_order: number; }
 export interface SettlementClaimRow { id: string; trip_id: string; name: string; nominal: number; claim_status: 'Refund' | 'Reimburse'; pt_burden: string; sort_order: number; }
 export interface SettlementReceipt { id: string; trip_id: string; category: string; description: string; amount: number; file_name?: string | null; file_base64: string | null; hr_status: 'pending' | 'approved' | 'partial' | 'rejected'; hr_approved_amount: number | null; hr_note: string | null; created_at?: string; }
 export interface Vehicle { id: string; plate_number: string; vehicle_type: string; status: string; current_km: number; fuel_monthly_cost: number; last_service_date: string | null; assigned_driver: string | null; }
-export interface Driver { id: string; name: string; license_number: string | null; phone: string | null; status: string; assigned_vehicle: string | null; }
+export interface Driver { id: string; name: string; license_number: string | null; phone: string | null; status: string; assigned_vehicle: string | null; employee_user_id?: string | null; nip?: string | null; }
 export interface TripTracking { id: string; trip_id: string; actor_name: string; actor_role: string; action: string; from_status: string | null; to_status: string; remarks: string | null; created_at: string; }
 
 export interface BizTrip {
