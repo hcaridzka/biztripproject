@@ -813,107 +813,50 @@ const driverTotal =
   // =======================================================
   // PARTICIPANTS
   // =======================================================
-
   const perParticipant:
-  PerParticipant[] =
-  participants.map(
-    (participant) => {
-      /*
-       * External participant tetap muncul
-       * di Table A tetapi tidak mempunyai
-       * automatic entitlement.
-       *
-       * HR dapat memberikan nominal melalui
-       * manual override di Cost Review.
-       */
-      if (
-        participant.category ===
-        'Eksternal'
-      ) {
-        return {
-          name:
-            participant.name ||
-            '(Belum diisi)',
-
-          jabatan:
-            participant.jabatan,
-
-          perDay: 0,
-
-          days:
-            tripDays,
-
-          total: 0,
-
-          hotel: 0,
-
-          driver: 0,
-
-          pettyCash: 0,
-
-          breakdown:
-            'Eksternal — Manual HR',
-
-          legs: [],
-        };
-      }
-
-      const participantCost =
-        perDiemForParticipant(
-          participant,
-          itinerary,
-          origin,
-          matrix,
-          dkMatrix
-        );
-
-      const hotel =
-        hotelByHR
-          ? 0
-          : participantCost.hotel;
-
-      const pettyAmount =
-        petty.perPersonBreakdown.find(
-          (item) =>
-            item.name ===
-            (
+    PerParticipant[] =
+    participants.map(
+      (participant) => {
+        /*
+         * External participant tetap muncul
+         * di Table A tetapi tidak mempunyai
+         * automatic entitlement.
+         *
+         * HR dapat memberikan nominal melalui
+         * manual override di Cost Review.
+         */
+        if (
+          participant.category ===
+          'Eksternal'
+        ) {
+          return {
+            name:
               participant.name ||
-              '(Belum diisi)'
-            )
-        )?.amount ?? 0;
+              '(Belum diisi)',
 
-      return {
-        name:
-          participant.name ||
-          '(Belum diisi)',
+            jabatan:
+              participant.jabatan,
 
-        jabatan:
-          participant.jabatan,
+            perDay: 0,
 
-        perDay:
-          participantCost.perDay,
+            days:
+              tripDays,
 
-        days:
-          tripDays,
+            total: 0,
 
-        total:
-          participantCost.total,
+            hotel: 0,
 
-        hotel,
+            driver: 0,
 
-        driver: 0,
+            pettyCash: 0,
 
-        pettyCash:
-          pettyAmount,
+            breakdown:
+              'Eksternal — Manual HR',
 
-        breakdown:
-          participantCost.breakdown,
+            legs: [],
+          };
+        }
 
-        legs:
-          participantCost.legs,
-      };
-    }
-  );
         const participantCost =
           perDiemForParticipant(
             participant,
@@ -923,10 +866,6 @@ const driverTotal =
             dkMatrix
           );
 
-        /*
-         * Jika hotel diatur HR,
-         * accommodation advance = 0.
-         */
         const hotel =
           hotelByHR
             ? 0
@@ -961,10 +900,6 @@ const driverTotal =
 
           hotel,
 
-          /*
-           * Driver incentive tidak pernah
-           * ditempel ke participant.
-           */
           driver: 0,
 
           pettyCash:
@@ -979,6 +914,16 @@ const driverTotal =
       }
     );
 
+  // =======================================================
+  // TOTAL PARTICIPANTS
+  // =======================================================
+
+  const perDiemTotal =
+    perParticipant.reduce(
+      (sum, participant) =>
+        sum + participant.total,
+      0
+    );
   // =======================================================
   // TOTAL PARTICIPANTS
   // =======================================================
@@ -1024,9 +969,12 @@ const driverTotal =
     hotelTotal,
 
     /*
-     * Driver Total =
-     * allowance harian + incentive jarak.
-     */
+ * Driver Total di engine =
+ * insentif jarak saja.
+ *
+ * Tunjangan dan pettycash Driver
+ * sudah masuk perParticipant.
+ */
     driverTotal,
 
     pettyCashTotal,
