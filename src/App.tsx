@@ -31,32 +31,12 @@ function Shell() {
     if (profile) refresh();
   }, [profile, refresh]);
 
-  useEffect(() => {
-    const handleSettlementEvent = (event: Event) => {
-      const customEvent = event as CustomEvent<{ id?: string }>;
-      const id = customEvent.detail?.id;
-      if (id) setPrintTrip({ id, mode: 'settlement' });
-    };
-
-    window.addEventListener('biztrip:print-settlement', handleSettlementEvent);
-    return () => window.removeEventListener('biztrip:print-settlement', handleSettlementEvent);
-  }, []);
-
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-sm text-slate-400">Loading...</div>
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-sm text-slate-400">Loading...</div></div>;
   }
 
   if (!profile) {
-    return (
-      <>
-        <Login />
-        <ToastHost toasts={toasts} onDismiss={dismissToast} />
-      </>
-    );
+    return <><Login /><ToastHost toasts={toasts} onDismiss={dismissToast} /></>;
   }
 
   const handlePrint = (id: string) => setPrintTrip({ id, mode: 'advance' });
@@ -67,7 +47,7 @@ function Shell() {
       <Layout view={view} setView={setView}>
         {view === 'dashboard' && <Dashboard setView={setView} setSelectedTrip={setSelectedTrip} />}
         {view === 'new-request' && <RequestForm onDone={() => setView('my-trips')} />}
-        {view === 'my-trips' && <MyTrips onPrint={handlePrint} selectedTripId={selectedTrip} />}
+        {view === 'my-trips' && <MyTrips onPrint={handlePrint} onPrintSettlement={handleSettlementPrint} selectedTripId={selectedTrip} />}
         {view === 'approval' && <ApprovalDashboard setSelectedTrip={setSelectedTrip} setView={setView} />}
         {view === 'pic-obligo' && <PicObligo selectedTripId={selectedTrip} />}
         {view === 'cost-review' && <CostCalculation onPrint={handlePrint} selectedTripId={selectedTrip} />}
@@ -80,14 +60,7 @@ function Shell() {
         {view === 'account' && <AccountSettings />}
         {view === 'vehicles' && <FleetManagement />}
       </Layout>
-
-      {printTrip && (
-        <PdfPrint
-          tripId={printTrip.id}
-          mode={printTrip.mode}
-          onClose={() => setPrintTrip(null)}
-        />
-      )}
+      {printTrip && <PdfPrint tripId={printTrip.id} mode={printTrip.mode} onClose={() => setPrintTrip(null)} />}
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
     </>
   );
