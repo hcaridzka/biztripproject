@@ -24,7 +24,6 @@ import {
   formatIDR,
 } from './ui-shared';
 
-import { PT_OPTIONS } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 
 import type { BizTrip, SettlementReceipt } from '../lib/types';
@@ -56,8 +55,12 @@ export function SettlementReview({
   const { profile } = useAuth();
 
   const {
-    trips,
+     trips,
     settlementReceipts,
+    disburseRows,
+  
+    activePTMaster,
+  
     updateTrip,
     showToast,
     refresh,
@@ -95,6 +98,118 @@ export function SettlementReview({
         r.category === 'Refund Transfer Proof'
     );
 
+  const getPTOptions = (
+  currentPT?: string
+) => {
+  const activeNames =
+    activePTMaster.map(
+      (pt) => pt.name
+    );
+
+  const current =
+    currentPT?.trim();
+
+  /*
+   * PT historical/inactive tetap
+   * boleh tampil pada settlement lama.
+   */
+  if (
+    current &&
+    !activeNames.includes(current)
+  ) {
+    return [
+      current,
+      ...activeNames,
+    ];
+  }
+
+  return activeNames;
+};
+
+const getDefaultPTForReceipt = (
+  trip: BizTrip,
+  category: string
+) => {
+  const advanceRows =
+    disburseRows.filter(
+      (row) =>
+        row.trip_id === trip.id
+    );
+
+  const normalizedCategory =
+    category
+      .trim()
+      .toLowerCase();
+
+  /*
+   * Settlement mencoba mengikuti
+   * cost center advance untuk komponen
+   * yang memang punya pasangan langsung.
+   */
+  const aliases:
+    Record<string, string[]> = {
+      bbm: [
+        'bbm',
+      ],
+
+      'e-toll': [
+        'e-toll',
+        'e toll',
+        'etoll',
+      ],
+
+      akomodasi: [
+        'akomodasi',
+        'hotel',
+      ],
+    };
+
+  const keywords =
+    aliases[
+      normalizedCategory
+    ] ?? [];
+
+  if (keywords.length > 0) {
+    const matched =
+      advanceRows.find(
+        (row) => {
+          const note =
+            (
+              row.component_note ??
+              ''
+            )
+              .trim()
+              .toLowerCase();
+
+          return keywords.some(
+            (keyword) =>
+              note.includes(
+                keyword
+              )
+          );
+        }
+      );
+
+    if (
+      matched?.pt_burden
+    ) {
+      return matched.pt_burden;
+    }
+  }
+
+  /*
+   * Untuk pengeluaran baru seperti
+   * konsumsi, parkir, laundry, entertain,
+   * dll yang tidak punya pasangan
+   * langsung di advance.
+   */
+  return (
+    trip.company_burden?.[0] ||
+    activePTMaster[0]?.name ||
+    ''
+  );
+};
+  
   const startReview = (trip: BizTrip) => {
     setSelected(trip);
     setSettleNote(trip.settlement_note ?? '');
@@ -125,8 +240,10 @@ export function SettlementReview({
           status: existingStatus,
           note: receipt.hr_note || '',
           ptBurden:
-            trip.company_burden?.[0] ??
-            PT_OPTIONS[0],
+  getDefaultPTForReceipt(
+    trip,
+    receipt.category
+  ),
           fileUrl: receipt.file_base64 || null,
         };
       })
@@ -910,11 +1027,18 @@ export function SettlementReview({
                             })
                           }
                         >
-                          {PT_OPTIONS.map((pt) => (
-                            <option key={pt} value={pt}>
-                              {pt}
-                            </option>
-                          ))}
+                          {getPTOptions(
+                            row.ptBurden
+                          ).map(
+                            (pt) => (
+                              <option
+                                key={pt}
+                                value={pt}
+                              >
+                                {pt}
+                              </option>
+                            )
+                          )}
                         </Select>
                       </Field>
 
