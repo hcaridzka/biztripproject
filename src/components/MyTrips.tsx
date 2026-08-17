@@ -10,7 +10,7 @@ import type { BizTrip, TripStatus } from '../lib/types';
 
 const PRE_TRIP_STATUSES: TripStatus[] = ['Draft', 'Pending Manager Approval', 'Pending PIC Obligo', 'Pending Direksi Approval', 'Pending HR Advance Review', 'Approved / Ready for Trip'];
 
-export function MyTrips({ onPrint, selectedTripId }: { onPrint: (id: string) => void; selectedTripId?: string | null }) {
+export function MyTrips({ onPrint, onPrintSettlement, selectedTripId }: { onPrint: (id: string) => void; onPrintSettlement: (id: string) => void; selectedTripId?: string | null }) {
   const { profile } = useAuth();
   const { trips, updateTrip, showToast, refresh } = useApp();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -26,148 +26,24 @@ export function MyTrips({ onPrint, selectedTripId }: { onPrint: (id: string) => 
   const myTrips = useMemo(() => trips.filter((t) => t.user_id === profile?.id), [trips, profile]);
   const selected = myTrips.find((t) => t.id === selectedId) ?? null;
 
-  useEffect(() => {
-    if (selectedTripId && myTrips.some((t) => t.id === selectedTripId)) setSelectedId(selectedTripId);
-  }, [selectedTripId, myTrips]);
+  useEffect(() => { if (selectedTripId && myTrips.some((t) => t.id === selectedTripId)) setSelectedId(selectedTripId); }, [selectedTripId, myTrips]);
+  useEffect(() => { myTrips.forEach((t) => { if (t.status !== 'Approved / Ready for Trip') return; const today = new Date().toISOString().slice(0, 10); if (t.departure_date <= today) { updateTrip(t.id, { status: 'On Trip' }); supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: 'System', actor_role: 'System', action: 'Auto Start Trip', from_status: 'Approved / Ready for Trip', to_status: 'On Trip', remarks: 'Auto-activated by date' }); } }); }, [myTrips]);
 
-  useEffect(() => {
-    myTrips.forEach((t) => {
-      if (t.status !== 'Approved / Ready for Trip') return;
-      const today = new Date().toISOString().slice(0, 10);
-      if (t.departure_date <= today) {
-        updateTrip(t.id, { status: 'On Trip' });
-        supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: 'System', actor_role: 'System', action: 'Auto Start Trip', from_status: 'Approved / Ready for Trip', to_status: 'On Trip', remarks: 'Auto-activated by date' });
-      }
-    });
-  }, [myTrips]);
-
-  const requestReReview = async (t: BizTrip) => {
-    const justification = window.prompt('Tulis justifikasi permintaan Re-Review:');
-    if (!justification?.trim()) return;
-    await updateTrip(t.id, { status: 'Pending Manager Approval', review_justification: justification, reject_reason: null, cost_data: { ...(t.cost_data ?? {}), direksiApprovals: {} } });
-    await supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Request Re-Review', from_status: t.status, to_status: 'Pending Manager Approval', remarks: justification });
-    showToast('success', 'Re-Review diajukan');
-    refresh();
-  };
-
-  const startTrip = async (t: BizTrip) => {
-    await updateTrip(t.id, { status: 'On Trip' });
-    await supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Start Trip', from_status: 'Approved / Ready for Trip', to_status: 'On Trip' });
-    showToast('success', 'Trip dimulai');
-    refresh();
-  };
-
-  const openCancel = (trip: BizTrip) => {
-    setCancelTrip(trip);
-    setCancelReason('');
-  };
-
-  const doCancel = async () => {
-    if (!cancelTrip || !cancelReason.trim()) return showToast('error', 'Catatan alasan wajib diisi');
-    try {
-      await updateTrip(cancelTrip.id, { status: 'Rejected', cancel_reason_category: 'Cancel', cancel_reason_detail: cancelReason, reject_reason: `Cancelled by Employee: ${cancelReason}` });
-      await supabase.from('trip_tracking').insert({ trip_id: cancelTrip.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Cancel Trip', from_status: cancelTrip.status, to_status: 'Rejected', remarks: cancelReason });
-      showToast('success', 'Pengajuan berhasil dibatalkan');
-      setCancelTrip(null);
-      setCancelReason('');
-      setSelectedId(null);
-      refresh();
-    } catch (e: any) {
-      showToast('error', 'Gagal membatalkan pengajuan: ' + e.message);
-    }
-  };
-
-  const openReschedule = (trip: BizTrip) => {
-    setRescheduleTrip(trip);
-    setRescheduleReason('');
-    setNewDepartureDate(trip.departure_date);
-    setNewDepartureTime(trip.departure_time ?? '');
-    setNewReturnDate(trip.return_date);
-    setNewReturnTime(trip.return_time ?? '');
-  };
-
-  const shiftDate = (dateString: string, diffDays: number) => {
-    const d = new Date(`${dateString}T00:00:00`);
-    d.setDate(d.getDate() + diffDays);
-    return d.toISOString().slice(0, 10);
-  };
+  const requestReReview = async (t: BizTrip) => { const justification = window.prompt('Tulis justifikasi permintaan Re-Review:'); if (!justification?.trim()) return; await updateTrip(t.id, { status: 'Pending Manager Approval', review_justification: justification, reject_reason: null, cost_data: { ...(t.cost_data ?? {}), direksiApprovals: {} } }); await supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Request Re-Review', from_status: t.status, to_status: 'Pending Manager Approval', remarks: justification }); showToast('success', 'Re-Review diajukan'); refresh(); };
+  const startTrip = async (t: BizTrip) => { await updateTrip(t.id, { status: 'On Trip' }); await supabase.from('trip_tracking').insert({ trip_id: t.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Start Trip', from_status: 'Approved / Ready for Trip', to_status: 'On Trip' }); showToast('success', 'Trip dimulai'); refresh(); };
+  const openCancel = (trip: BizTrip) => { setCancelTrip(trip); setCancelReason(''); };
+  const doCancel = async () => { if (!cancelTrip || !cancelReason.trim()) return showToast('error', 'Catatan alasan wajib diisi'); try { await updateTrip(cancelTrip.id, { status: 'Rejected', cancel_reason_category: 'Cancel', cancel_reason_detail: cancelReason, reject_reason: `Cancelled by Employee: ${cancelReason}` }); await supabase.from('trip_tracking').insert({ trip_id: cancelTrip.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Cancel Trip', from_status: cancelTrip.status, to_status: 'Rejected', remarks: cancelReason }); showToast('success', 'Pengajuan berhasil dibatalkan'); setCancelTrip(null); setCancelReason(''); setSelectedId(null); refresh(); } catch (e: any) { showToast('error', 'Gagal membatalkan pengajuan: ' + e.message); } };
+  const openReschedule = (trip: BizTrip) => { setRescheduleTrip(trip); setRescheduleReason(''); setNewDepartureDate(trip.departure_date); setNewDepartureTime(trip.departure_time ?? ''); setNewReturnDate(trip.return_date); setNewReturnTime(trip.return_time ?? ''); };
+  const shiftDate = (dateString: string, diffDays: number) => { const d = new Date(`${dateString}T00:00:00`); d.setDate(d.getDate() + diffDays); return d.toISOString().slice(0, 10); };
   const dateDiffInDays = (oldDate: string, newDate: string) => Math.round((new Date(`${newDate}T00:00:00`).getTime() - new Date(`${oldDate}T00:00:00`).getTime()) / 86400000);
   const rescheduleTarget = (t: BizTrip): TripStatus => t.status === 'Approved / Ready for Trip' ? 'Pending HR Advance Review' : t.status;
-
-  const doReschedule = async () => {
-    if (!rescheduleTrip || !rescheduleReason.trim() || !newDepartureDate || !newReturnDate) return showToast('error', 'Tanggal baru dan alasan reschedule wajib diisi');
-    const depart = new Date(`${newDepartureDate}T${newDepartureTime || '00:00'}`);
-    const back = new Date(`${newReturnDate}T${newReturnTime || '23:59'}`);
-    if (back < depart) return showToast('error', 'Tanggal dan jam kembali tidak boleh sebelum tanggal dan jam berangkat');
-    const original = rescheduleTrip.itinerary ?? [];
-    if (!original.length) return showToast('error', 'Itinerary perjalanan tidak ditemukan');
-    const diff = dateDiffInDays(rescheduleTrip.departure_date, newDepartureDate);
-    let shifted = original.map((leg) => ({ ...leg, start_date: shiftDate(leg.start_date, diff), end_date: shiftDate(leg.end_date, diff) }));
-    shifted = shifted.map((leg, i) => i === 0 ? { ...leg, start_date: newDepartureDate, start_time: newDepartureTime || leg.start_time } : leg);
-    shifted = shifted.map((leg, i) => i === shifted.length - 1 ? { ...leg, end_date: newReturnDate, end_time: newReturnTime || leg.end_time } : leg);
-    const oldSchedule = `${rescheduleTrip.departure_date} ${rescheduleTrip.departure_time ?? ''} s/d ${rescheduleTrip.return_date} ${rescheduleTrip.return_time ?? ''}`;
-    const newSchedule = `${newDepartureDate} ${newDepartureTime || ''} s/d ${newReturnDate} ${newReturnTime || ''}`;
-    const target = rescheduleTarget(rescheduleTrip);
-    try {
-      await updateTrip(rescheduleTrip.id, { itinerary: shifted, departure_date: newDepartureDate, departure_time: newDepartureTime || null, return_date: newReturnDate, return_time: newReturnTime || null, total_days: daysBetween(newDepartureDate, newReturnDate), status: target, cancel_reason_category: 'Reschedule', cancel_reason_detail: rescheduleReason, review_justification: `Reschedule dari ${oldSchedule} menjadi ${newSchedule}. Alasan: ${rescheduleReason}`, ...(rescheduleTrip.status === 'Approved / Ready for Trip' ? { spd_number: null, spd_issued_at: null, approved_at: null } : {}) });
-      await supabase.from('trip_tracking').insert({ trip_id: rescheduleTrip.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Reschedule Request', from_status: rescheduleTrip.status, to_status: target, remarks: `Jadwal lama: ${oldSchedule}. Jadwal baru: ${newSchedule}. Alasan: ${rescheduleReason}` });
-      showToast('success', target === rescheduleTrip.status ? 'Jadwal diperbarui tanpa mengulang flow approval.' : 'Jadwal diperbarui dan dikirim ke HR untuk refresh advance/SPD.');
-      setRescheduleTrip(null);
-      setRescheduleReason('');
-      refresh();
-    } catch (e: any) {
-      showToast('error', 'Gagal mengajukan reschedule: ' + e.message);
-    }
-  };
+  const doReschedule = async () => { if (!rescheduleTrip || !rescheduleReason.trim() || !newDepartureDate || !newReturnDate) return showToast('error', 'Tanggal baru dan alasan reschedule wajib diisi'); const depart = new Date(`${newDepartureDate}T${newDepartureTime || '00:00'}`); const back = new Date(`${newReturnDate}T${newReturnTime || '23:59'}`); if (back < depart) return showToast('error', 'Tanggal dan jam kembali tidak boleh sebelum tanggal dan jam berangkat'); const original = rescheduleTrip.itinerary ?? []; if (!original.length) return showToast('error', 'Itinerary perjalanan tidak ditemukan'); const diff = dateDiffInDays(rescheduleTrip.departure_date, newDepartureDate); let shifted = original.map((leg) => ({ ...leg, start_date: shiftDate(leg.start_date, diff), end_date: shiftDate(leg.end_date, diff) })); shifted = shifted.map((leg, i) => i === 0 ? { ...leg, start_date: newDepartureDate, start_time: newDepartureTime || leg.start_time } : leg); shifted = shifted.map((leg, i) => i === shifted.length - 1 ? { ...leg, end_date: newReturnDate, end_time: newReturnTime || leg.end_time } : leg); const oldSchedule = `${rescheduleTrip.departure_date} ${rescheduleTrip.departure_time ?? ''} s/d ${rescheduleTrip.return_date} ${rescheduleTrip.return_time ?? ''}`; const newSchedule = `${newDepartureDate} ${newDepartureTime || ''} s/d ${newReturnDate} ${newReturnTime || ''}`; const target = rescheduleTarget(rescheduleTrip); try { await updateTrip(rescheduleTrip.id, { itinerary: shifted, departure_date: newDepartureDate, departure_time: newDepartureTime || null, return_date: newReturnDate, return_time: newReturnTime || null, total_days: daysBetween(newDepartureDate, newReturnDate), status: target, cancel_reason_category: 'Reschedule', cancel_reason_detail: rescheduleReason, review_justification: `Reschedule dari ${oldSchedule} menjadi ${newSchedule}. Alasan: ${rescheduleReason}`, ...(rescheduleTrip.status === 'Approved / Ready for Trip' ? { spd_number: null, spd_issued_at: null, approved_at: null } : {}) }); await supabase.from('trip_tracking').insert({ trip_id: rescheduleTrip.id, actor_name: profile?.name ?? '', actor_role: 'Employee', action: 'Reschedule Request', from_status: rescheduleTrip.status, to_status: target, remarks: `Jadwal lama: ${oldSchedule}. Jadwal baru: ${newSchedule}. Alasan: ${rescheduleReason}` }); showToast('success', target === rescheduleTrip.status ? 'Jadwal diperbarui tanpa mengulang flow approval.' : 'Jadwal diperbarui dan dikirim ke HR untuk refresh advance/SPD.'); setRescheduleTrip(null); setRescheduleReason(''); refresh(); } catch (e: any) { showToast('error', 'Gagal mengajukan reschedule: ' + e.message); } };
 
   const canReschedule = (t: BizTrip) => PRE_TRIP_STATUSES.includes(t.status);
   const canCancel = (t: BizTrip) => !['Completed', 'Rejected'].includes(t.status);
+  const actionModals = <><Modal open={!!cancelTrip} onClose={() => setCancelTrip(null)} title="Cancel Request"><div className="space-y-4"><Field label="Catatan Alasan Pembatalan" required><Textarea rows={3} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} /></Field><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setCancelTrip(null)}>Batal</Button><Button variant="danger" onClick={doCancel}>Confirm Cancel</Button></div></div></Modal><Modal open={!!rescheduleTrip} onClose={() => setRescheduleTrip(null)} title="Reschedule Perjalanan"><div className="space-y-4"><div className="rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 text-sm text-amber-800">Reschedule dapat dilakukan sejak pengajuan masih berjalan sampai sebelum trip dimulai. Hanya jadwal yang berubah; rute/tujuan tetap. Approval yang sudah lewat tidak diulang.</div><div className="grid md:grid-cols-2 gap-3"><Field label="Tanggal Berangkat Baru" required><input type="date" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={newDepartureDate} onChange={(e) => setNewDepartureDate(e.target.value)} /></Field><Field label="Jam Berangkat Baru"><input type="time" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={newDepartureTime} onChange={(e) => setNewDepartureTime(e.target.value)} /></Field><Field label="Tanggal Kembali Baru" required><input type="date" min={newDepartureDate} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={newReturnDate} onChange={(e) => setNewReturnDate(e.target.value)} /></Field><Field label="Jam Kembali Baru"><input type="time" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={newReturnTime} onChange={(e) => setNewReturnTime(e.target.value)} /></Field></div><Field label="Alasan Reschedule" required><Textarea rows={3} value={rescheduleReason} onChange={(e) => setRescheduleReason(e.target.value)} /></Field><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setRescheduleTrip(null)}>Batal</Button><Button icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={doReschedule}>Submit Reschedule</Button></div></div></Modal></>;
 
-  const actionModals = <>
-    <Modal open={!!cancelTrip} onClose={() => setCancelTrip(null)} title="Cancel Request">
-      <div className="space-y-4">
-        <Field label="Catatan Alasan Pembatalan" required><Textarea rows={3} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} /></Field>
-        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setCancelTrip(null)}>Batal</Button><Button variant="danger" onClick={doCancel}>Confirm Cancel</Button></div>
-      </div>
-    </Modal>
-    <Modal open={!!rescheduleTrip} onClose={() => setRescheduleTrip(null)} title="Reschedule Perjalanan">
-      <div className="space-y-4">
-        <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 text-sm text-amber-800">Reschedule dapat dilakukan sejak pengajuan masih berjalan sampai sebelum trip dimulai. Hanya jadwal yang berubah; rute/tujuan tetap. Approval yang sudah lewat tidak diulang.</div>
-        <div className="grid md:grid-cols-2 gap-3">
-          <Field label="Tanggal Berangkat Baru" required><input type="date" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={newDepartureDate} onChange={(e) => setNewDepartureDate(e.target.value)} /></Field>
-          <Field label="Jam Berangkat Baru"><input type="time" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={newDepartureTime} onChange={(e) => setNewDepartureTime(e.target.value)} /></Field>
-          <Field label="Tanggal Kembali Baru" required><input type="date" min={newDepartureDate} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={newReturnDate} onChange={(e) => setNewReturnDate(e.target.value)} /></Field>
-          <Field label="Jam Kembali Baru"><input type="time" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={newReturnTime} onChange={(e) => setNewReturnTime(e.target.value)} /></Field>
-        </div>
-        <Field label="Alasan Reschedule" required><Textarea rows={3} value={rescheduleReason} onChange={(e) => setRescheduleReason(e.target.value)} /></Field>
-        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setRescheduleTrip(null)}>Batal</Button><Button icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={doReschedule}>Submit Reschedule</Button></div>
-      </div>
-    </Modal>
-  </>;
+  if (selected) return <><div className="space-y-4 max-w-4xl mx-auto animate-slide-up"><div className="flex items-center justify-between"><Button variant="secondary" size="sm" onClick={() => setSelectedId(null)}>← Back</Button><div className="flex gap-2 flex-wrap">{selected.status === 'Approved / Ready for Trip' && <Button size="sm" icon={<Play className="w-3.5 h-3.5" />} onClick={() => startTrip(selected)}>Start Trip</Button>}{canReschedule(selected) && <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={() => openReschedule(selected)}>Reschedule</Button>}{canCancel(selected) && <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => openCancel(selected)}>Cancel Trip</Button>}</div></div><TripDetail trip={selected} onPrint={onPrint} onPrintSettlement={onPrintSettlement} />{selected.status === 'Rejected' && <Card className="p-4"><Button size="sm" variant="secondary" icon={<RotateCcw className="w-3.5 h-3.5" />} onClick={() => requestReReview(selected)}>Request Re-Review</Button></Card>}</div>{actionModals}</>;
 
-  if (selected) {
-    return <>
-      <div className="space-y-4 max-w-4xl mx-auto animate-slide-up">
-        <div className="flex items-center justify-between">
-          <Button variant="secondary" size="sm" onClick={() => setSelectedId(null)}>← Back</Button>
-          <div className="flex gap-2 flex-wrap">
-            {selected.status === 'Approved / Ready for Trip' && <Button size="sm" icon={<Play className="w-3.5 h-3.5" />} onClick={() => startTrip(selected)}>Start Trip</Button>}
-            {canReschedule(selected) && <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={() => openReschedule(selected)}>Reschedule</Button>}
-            {canCancel(selected) && <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => openCancel(selected)}>Cancel Trip</Button>}
-          </div>
-        </div>
-        <TripDetail trip={selected} onPrint={onPrint} />
-        {selected.status === 'Rejected' && <Card className="p-4"><Button size="sm" variant="secondary" icon={<RotateCcw className="w-3.5 h-3.5" />} onClick={() => requestReReview(selected)}>Request Re-Review</Button></Card>}
-      </div>
-      {actionModals}
-    </>;
-  }
-
-  return <>
-    <div className="space-y-6 animate-slide-up max-w-4xl mx-auto">
-      <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600"><MapPin className="w-5 h-5" /></div><div><h2 className="text-xl font-bold text-slate-900">My Trips</h2><p className="text-sm text-slate-500">{myTrips.length} pengajuan dinas</p></div></div>
-      {myTrips.length === 0 ? <Card className="p-6"><EmptyState icon={<MapPin className="w-6 h-6" />} title="Belum ada trip" /></Card> : <div className="space-y-2">{myTrips.map((t) => <Card key={t.id} className="p-4 hover:ring-brand-200 transition"><button type="button" className="w-full text-left flex items-start justify-between gap-4" onClick={() => setSelectedId(t.id)}><div className="flex-1"><div className="text-sm font-semibold">{t.purpose}</div><div className="text-xs text-slate-400 mt-1">{t.origin} → {t.itinerary?.[0]?.destination_custom || t.itinerary?.[0]?.destination || '-'} · {formatDate(t.departure_date)} · {daysBetween(t.departure_date, t.return_date)} hari · {formatIDR(Number(t.cost_grand_total) || 0)}</div></div><StatusBadge status={t.status} /></button><div className="mt-3 flex gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>{t.status === 'Approved / Ready for Trip' && <Button size="sm" icon={<Play className="w-3.5 h-3.5" />} onClick={() => startTrip(t)}>Start Trip</Button>}{t.status === 'Rejected' && <Button size="sm" variant="secondary" icon={<RotateCcw className="w-3.5 h-3.5" />} onClick={() => requestReReview(t)}>Re-Review</Button>}{['Approved / Ready for Trip', 'On Trip', 'Completed'].includes(t.status) && <Button size="sm" variant="secondary" icon={<FileText className="w-3.5 h-3.5" />} onClick={() => onPrint(t.id)}>Surat Perjalanan Dinas</Button>}{canReschedule(t) && <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={() => openReschedule(t)}>Reschedule</Button>}{canCancel(t) && <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => openCancel(t)}>Cancel Trip</Button>}</div></Card>)}</div>}
-    </div>
-    {actionModals}
-  </>;
+  return <><div className="space-y-6 animate-slide-up max-w-4xl mx-auto"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600"><MapPin className="w-5 h-5" /></div><div><h2 className="text-xl font-bold text-slate-900">My Trips</h2><p className="text-sm text-slate-500">{myTrips.length} pengajuan dinas</p></div></div>{myTrips.length === 0 ? <Card className="p-6"><EmptyState icon={<MapPin className="w-6 h-6" />} title="Belum ada trip" /></Card> : <div className="space-y-2">{myTrips.map((t) => <Card key={t.id} className="p-4 hover:ring-brand-200 transition"><button type="button" className="w-full text-left flex items-start justify-between gap-4" onClick={() => setSelectedId(t.id)}><div className="flex-1"><div className="text-sm font-semibold">{t.purpose}</div><div className="text-xs text-slate-400 mt-1">{t.origin} → {t.itinerary?.[0]?.destination_custom || t.itinerary?.[0]?.destination || '-'} · {formatDate(t.departure_date)} · {daysBetween(t.departure_date, t.return_date)} hari · {formatIDR(Number(t.cost_grand_total) || 0)}</div></div><StatusBadge status={t.status} /></button><div className="mt-3 flex gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>{t.status === 'Approved / Ready for Trip' && <Button size="sm" icon={<Play className="w-3.5 h-3.5" />} onClick={() => startTrip(t)}>Start Trip</Button>}{t.status === 'Rejected' && <Button size="sm" variant="secondary" icon={<RotateCcw className="w-3.5 h-3.5" />} onClick={() => requestReReview(t)}>Re-Review</Button>}{['Approved / Ready for Trip', 'On Trip', 'Completed'].includes(t.status) && <Button size="sm" variant="secondary" icon={<FileText className="w-3.5 h-3.5" />} onClick={() => onPrint(t.id)}>Surat Perjalanan Dinas</Button>}{t.status === 'Completed' && <Button size="sm" variant="secondary" icon={<FileText className="w-3.5 h-3.5" />} onClick={() => onPrintSettlement(t.id)}>PDF Settlement</Button>}{canReschedule(t) && <Button size="sm" variant="secondary" icon={<CalendarClock className="w-3.5 h-3.5" />} onClick={() => openReschedule(t)}>Reschedule</Button>}{canCancel(t) && <Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => openCancel(t)}>Cancel Trip</Button>}</div></Card>)}</div>}</div>{actionModals}</>;
 }
