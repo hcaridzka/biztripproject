@@ -708,21 +708,62 @@ export function computeCost(params: {
   } = params;
 
   // =======================================================
-  // DRIVER DISTANCE INCENTIVE
-  // Flat per trip, bukan per hari.
+  // TRIP DAYS
   // =======================================================
+
+  const tripDays =
+    itinerary.reduce(
+      (sum, leg) =>
+        sum +
+        daysBetween(
+          leg.start_date,
+          leg.end_date
+        ),
+      0
+    );
+
+  // =======================================================
+  // DRIVER
+  //
+  // Driver adalah driver internal yang diassign PIC Obligo.
+  // Driver BUKAN participant perjalanan.
+  //
+  // Driver Cost =
+  // Tunjangan Harian Driver
+  // + Insentif Jarak flat per trip
+  // =======================================================
+
+  const driverGrade =
+    matrix.TAD ??
+    DEFAULT_MATRIX.TAD;
+
+  const driverDailyAllowance =
+    needsDriver
+      ? driverGrade.luarKota *
+        tripDays
+      : 0;
 
   let driverDistanceIncentive = 0;
 
-  if (totalDistance === 'gt200') {
+  if (
+    needsDriver &&
+    totalDistance === 'gt200'
+  ) {
     driverDistanceIncentive =
       driverIncentive.gt200;
   }
 
-  if (totalDistance === 'gt400') {
+  if (
+    needsDriver &&
+    totalDistance === 'gt400'
+  ) {
     driverDistanceIncentive =
       driverIncentive.gt400;
   }
+
+  const driverTotal =
+    driverDailyAllowance +
+    driverDistanceIncentive;
 
   // =======================================================
   // PETTY CASH
@@ -735,22 +776,19 @@ export function computeCost(params: {
       matrix
     );
 
+  /*
+   * Participant hanya pegawai yang memang
+   * melakukan perjalanan sebagai participant.
+   *
+   * Driver PIC Obligo tidak diproses di sini.
+   */
   const internalParticipants =
     participants.filter(
       (participant) =>
         (participant.category ?? 'Internal') !==
-        'Eksternal'
-    );
-
-  const tripDays =
-    itinerary.reduce(
-      (sum, leg) =>
-        sum +
-        daysBetween(
-          leg.start_date,
-          leg.end_date
-        ),
-      0
+        'Eksternal' &&
+        participant.jabatan !==
+        'Driver'
     );
 
   // =======================================================
@@ -789,27 +827,6 @@ export function computeCost(params: {
               )
           )?.amount ?? 0;
 
-        /*
-         * Driver yang memang tercatat sebagai
-         * participant menerima incentive jarak.
-         */
-        const isDriver =
-          participant.jabatan ===
-          'Driver';
-
-        const driverBonus =
-          isDriver
-            ? driverDistanceIncentive
-            : 0;
-
-        const breakdown =
-          isDriver &&
-          driverBonus > 0
-            ? `${participantCost.breakdown} + Insentif Jarak (${formatIDR(
-                driverBonus
-              )})`
-            : participantCost.breakdown;
-
         return {
           name:
             participant.name ||
@@ -829,14 +846,17 @@ export function computeCost(params: {
 
           hotel,
 
-          driver:
-            participantCost.driver +
-            driverBonus,
+          /*
+           * Driver incentive tidak pernah
+           * ditempel ke participant.
+           */
+          driver: 0,
 
           pettyCash:
             pettyAmount,
 
-          breakdown,
+          breakdown:
+            participantCost.breakdown,
 
           legs:
             participantCost.legs,
@@ -845,7 +865,7 @@ export function computeCost(params: {
     );
 
   // =======================================================
-  // TOTAL
+  // TOTAL PARTICIPANTS
   // =======================================================
 
   const perDiemTotal =
@@ -862,36 +882,17 @@ export function computeCost(params: {
       0
     );
 
-  /*
-   * Kondisi request hanya driver:
-   *
-   * Driver bisa tidak tercatat sebagai participant.
-   * Jika needsDriver = true dan tidak ada participant
-   * berjabatan Driver, incentive tetap dihitung.
-   */
-  const driverInParticipants =
-    participants.some(
-      (participant) =>
-        participant.jabatan ===
-        'Driver'
-    );
-
-  const externalDriverIncentive =
-    needsDriver &&
-    !driverInParticipants
-      ? driverDistanceIncentive
-      : 0;
-
-  const driverTotal =
+  const pettyCashTotal =
     perParticipant.reduce(
       (sum, participant) =>
-        sum + participant.driver,
+        sum +
+        participant.pettyCash,
       0
-    ) +
-    externalDriverIncentive;
+    );
 
-  const pettyCashTotal =
-    petty.total;
+  // =======================================================
+  // GRAND TOTAL
+  // =======================================================
 
   const grandTotal =
     perDiemTotal +
@@ -906,11 +907,18 @@ export function computeCost(params: {
 
     perDiemTotal,
     hotelTotal,
+
+    /*
+     * Driver Total =
+     * allowance harian + incentive jarak.
+     */
     driverTotal,
 
     pettyCashTotal,
+
     pettyCashHolder:
       petty.holder,
+
     pettyCashTrips:
       petty.trips,
 
