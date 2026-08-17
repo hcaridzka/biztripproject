@@ -1,211 +1,125 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Calculator,
-  Check,
-  FileText,
-  Plus,
-  Save,
-  Trash2,
-} from 'lucide-react';
-
+import { Calculator, Check, FileText, Plus, Save, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
-import {
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  Input,
-  Select,
-  Textarea,
-  formatIDR,
-} from './ui-shared';
-import { SCHEME_OVERRIDE_OPTIONS } from '../lib/constants';
-import {
-  computeCost,
-  daysBetween,
-  defaultKPScheme,
-  generateSpdNumber,
-} from '../lib/costCalc';
-import { formatDate, uid } from '../lib/utils';
+import { Button, Card, EmptyState, Field, Input, Select, Textarea, formatIDR } from './ui-shared';
+import { computeCost, daysBetween, defaultKPScheme, generateSpdNumber } from '../lib/costCalc';
+import { formatDate } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import type { BizTrip, KPScheme, TripCategory } from '../lib/types';
 
-type CostSplitRow = {
-  id: string;
-  name: string;
-  nominal: number;
-  keterangan: string;
-  pt_burden: string;
+type CostSplitRow = { id: string; name: string; nominal: number; keterangan: string; pt_burden: string };
+type OverrideMap = Record<string, number>;
+type LegOverride = { enabled: boolean; days: number; rate: number; amount: number };
+type LegOverrideMap = Record<string, LegOverride>;
+
+const gradeKey = (jabatan?: string) => {
+  if (jabatan === 'Direksi') return 'Direksi';
+  if (jabatan === 'General Manager') return 'GM';
+  if (jabatan === 'Head Department' || jabatan === 'Team Leader') return 'Head/TL';
+  if (jabatan === 'Driver' || jabatan === 'TAD') return 'TAD';
+  return 'Staff';
 };
 
-type OverrideMap = Record<string, number>;
+const rank = (jabatan?: string) => {
+  const map: Record<string, number> = { Direksi: 6, 'General Manager': 5, 'Head Department': 4, 'Team Leader': 3, Staff: 2, Driver: 1, TAD: 1 };
+  return map[jabatan ?? ''] ?? 0;
+};
 
-export function CostCalculation({
-  onPrint,
-  selectedTripId,
-}: {
-  onPrint: (id: string) => void;
-  selectedTripId?: string | null;
-}) {
+const eligiblePettyScheme = (scheme: string) => scheme === 'LK' || scheme === 'KP2' || scheme === 'KPO';
+
+function movementCount(flags: boolean[]) {
+  let count = 0;
+  let inEligibleBlock = false;
+  flags.forEach((eligible) => {
+    if (eligible && !inEligibleBlock) {
+      count += 1; // masuk ke perjalanan eligible
+      inEligibleBlock = true;
+    } else if (!eligible && inEligibleBlock) {
+      count += 1; // kembali dari perjalanan eligible
+      inEligibleBlock = false;
+    }
+  });
+  if (inEligibleBlock) count += 1; // perjalanan pulang ke origin
+  return count;
+}
+
+export function CostCalculation({ onPrint, selectedTripId }: { onPrint: (id: string) => void; selectedTripId?: string | null }) {
   const { profile } = useAuth();
-  const {
-    trips,
-    disburseRows,
-    updateTrip,
-    showToast,
-    refresh,
-    travelMatrix,
-    travelDKMatrix,
-    driverIncentive,
-    activePTMaster,
-  } = useApp();
+  const { trips, disburseRows, updateTrip, showToast, refresh, travelMatrix, travelDKMatrix, driverIncentive, activePTMaster } = useApp();
 
   const [selected, setSelected] = useState<BizTrip | null>(null);
   const [totalDays, setTotalDays] = useState(1);
   const [kpScheme, setKpScheme] = useState<KPScheme>('KP2');
-  const [schemeOverride, setSchemeOverride] = useState('');
   const [hotelByHR, setHotelByHR] = useState(true);
   const [manualFuel, setManualFuel] = useState(0);
   const [manualEtoll, setManualEtoll] = useState(0);
-
-  const [allowanceOverride, setAllowanceOverride] = useState<OverrideMap>({});
+  const [legOverrides, setLegOverrides] = useState<LegOverrideMap>({});
+  const [externalAllowanceOverride, setExternalAllowanceOverride] = useState<OverrideMap>({});
   const [hotelOverride, setHotelOverride] = useState<OverrideMap>({});
   const [pettyOverride, setPettyOverride] = useState<OverrideMap>({});
   const [driverIncentiveOverride, setDriverIncentiveOverride] = useState<number | null>(null);
-
   const [spdNumber, setSpdNumber] = useState('');
   const [hrNotes, setHrNotes] = useState('');
   const [extraRows, setExtraRows] = useState<CostSplitRow[]>([]);
 
-  const queue = useMemo(
-    () => trips.filter((t) => t.status === 'Pending HR Advance Review'),
-    [trips]
-  );
+  const queue = useMemo(() => trips.filter((t) => t.status === 'Pending HR Advance Review'), [trips]);
 
   const startReview = (t: BizTrip) => {
     setSelected(t);
-
     const activeScheme = t.kp_scheme ?? defaultKPScheme(t.itinerary ?? []);
     setKpScheme(activeScheme);
-    setSchemeOverride('');
-    setTotalDays(
-      t.total_days || daysBetween(t.departure_date, t.return_date)
-    );
+    setTotalDays(t.total_days || daysBetween(t.departure_date, t.return_date));
     setManualFuel(Number(t.fuel_cost) || 0);
     setManualEtoll(Number(t.etoll_cost) || 0);
-
     const saved: any = t.cost_data ?? {};
     setHotelByHR(saved.hotelByHR ?? true);
+    setLegOverrides(saved.legOverrides ?? {});
 
-    const allowanceMap: OverrideMap = {};
-    const hotelMap: OverrideMap = {};
-    const pettyMap: OverrideMap = {};
-    const savedPP = Array.isArray(saved.perParticipant)
-      ? saved.perParticipant
-      : [];
-
-    savedPP.forEach((p: any) => {
+    const ext: OverrideMap = {};
+    const hotel: OverrideMap = {};
+    const petty: OverrideMap = {};
+    (Array.isArray(saved.perParticipant) ? saved.perParticipant : []).forEach((p: any) => {
       if (!p?.name) return;
-      if (p.total !== undefined) allowanceMap[p.name] = Number(p.total) || 0;
-      if (p.hotel !== undefined) hotelMap[p.name] = Number(p.hotel) || 0;
-      if (p.pettyCash !== undefined) pettyMap[p.name] = Number(p.pettyCash) || 0;
+      if ((p.legs ?? []).length === 0 && p.total !== undefined) ext[p.name] = Number(p.total) || 0;
+      if (p.hotel !== undefined) hotel[p.name] = Number(p.hotel) || 0;
+      if (p.pettyCash !== undefined) petty[p.name] = Number(p.pettyCash) || 0;
     });
-
-    setAllowanceOverride(allowanceMap);
-    setHotelOverride(hotelMap);
-    setPettyOverride(pettyMap);
-
-    setDriverIncentiveOverride(
-      saved.driverDistanceIncentive !== undefined
-        ? Number(saved.driverDistanceIncentive) || 0
-        : saved.assignedDriverCost !== undefined
-          ? Number(saved.assignedDriverCost) || 0
-          : saved.externalDriverIncentive !== undefined
-            ? Number(saved.externalDriverIncentive) || 0
-            : null
-    );
-
-    setSpdNumber(
-      t.spd_number ??
-        generateSpdNumber(activeScheme, queue.length + 1, t.requester_name)
-    );
+    setExternalAllowanceOverride(ext);
+    setHotelOverride(hotel);
+    setPettyOverride(petty);
+    setDriverIncentiveOverride(saved.driverDistanceIncentive !== undefined ? Number(saved.driverDistanceIncentive) || 0 : null);
+    setSpdNumber(t.spd_number ?? generateSpdNumber(activeScheme, queue.length + 1, t.requester_name));
     setHrNotes(t.hr_notes ?? '');
 
     const existing = disburseRows.filter((d) => d.trip_id === t.id);
-    setExtraRows(
-      existing.length
-        ? existing.map((d) => ({
-            id: d.id,
-            name: d.name,
-            nominal: Number(d.nominal) || 0,
-            keterangan: d.component_note,
-            pt_burden: d.pt_burden,
-          }))
-        : []
-    );
+    setExtraRows(existing.map((d) => ({ id: d.id, name: d.name, nominal: Number(d.nominal) || 0, keterangan: d.component_note, pt_burden: d.pt_burden })));
   };
 
   useEffect(() => {
     if (!selectedTripId || selected?.id === selectedTripId) return;
-    const trip = trips.find(
-      (t) =>
-        t.id === selectedTripId &&
-        t.status === 'Pending HR Advance Review'
-    );
+    const trip = trips.find((t) => t.id === selectedTripId && t.status === 'Pending HR Advance Review');
     if (trip) startReview(trip);
   }, [selectedTripId, trips, selected?.id]);
 
   const cost = useMemo(() => {
     if (!selected) return null;
 
-    const effectiveTripCategory: TripCategory =
-      schemeOverride.startsWith('within_city') || schemeOverride === 'luar_kota'
-        ? (schemeOverride as TripCategory)
-        : selected.trip_category;
-
-    const effectiveKpScheme = (
-      ['KP1', 'KP2', 'KPO'].includes(schemeOverride)
-        ? schemeOverride
-        : kpScheme
-    ) as KPScheme;
-
-    /*
-     * Effective participants = participant dari request + driver hasil assignment PIC Obligo.
-     * Driver adalah participant perjalanan, tetapi tidak perlu diinput pegawai di Request Form.
-     */
     const requestParticipants = [...(selected.participants ?? [])] as any[];
-    const assignedDriverName = selected.obligo_driver_name?.trim();
-    const driverAlreadyExists = assignedDriverName
-      ? requestParticipants.some(
-          (p) =>
-            String(p?.name ?? '').trim().toLowerCase() ===
-            assignedDriverName.toLowerCase()
-        )
-      : false;
-
-    const effectiveParticipants: any[] =
-      assignedDriverName && !driverAlreadyExists
-        ? [
-            ...requestParticipants,
-            {
-              id: `obligo-driver-${selected.id}`,
-              name: assignedDriverName,
-              jabatan: 'Driver',
-              category: 'Internal',
-              keterangan: 'Driver assigned by PIC Obligo',
-            },
-          ]
-        : requestParticipants;
+    const driverName = selected.obligo_driver_name?.trim();
+    const hasDriver = driverName ? requestParticipants.some((p) => String(p?.name ?? '').trim().toLowerCase() === driverName.toLowerCase()) : false;
+    const effectiveParticipants = driverName && !hasDriver
+      ? [...requestParticipants, { id: `obligo-driver-${selected.id}`, name: driverName, jabatan: 'Driver', category: 'Internal', keterangan: 'Driver assigned by PIC Obligo' }]
+      : requestParticipants;
 
     const base = computeCost({
       participants: effectiveParticipants,
       days: totalDays,
       itinerary: selected.itinerary ?? [],
       origin: selected.origin,
-      tripCategory: effectiveTripCategory,
-      kpScheme: effectiveKpScheme,
-      needsDriver: Boolean(assignedDriverName || selected.needs_driver),
+      tripCategory: selected.trip_category as TripCategory,
+      kpScheme,
+      needsDriver: Boolean(driverName || selected.needs_driver),
       totalDistance: selected.total_distance ?? 'none',
       fuelCost: manualFuel,
       etollCost: manualEtoll,
@@ -215,626 +129,199 @@ export function CostCalculation({
       driverIncentive,
     });
 
-    const perParticipant = base.perParticipant.map((pp) => ({
-      ...pp,
-      total: Number(allowanceOverride[pp.name] ?? pp.total) || 0,
-      hotel: hotelByHR
-        ? 0
-        : Number(hotelOverride[pp.name] ?? pp.hotel) || 0,
-      driver: 0,
-      pettyCash: Number(pettyOverride[pp.name] ?? pp.pettyCash) || 0,
-    }));
+    const participantRows = base.perParticipant.map((pp) => {
+      const isDriver = pp.jabatan === 'Driver' || pp.name === driverName;
+      const isExternal = effectiveParticipants.find((p: any) => p.name === pp.name)?.category === 'Eksternal';
+      const legs = (pp.legs ?? []).map((leg) => {
+        const key = `${pp.name}::${leg.legIndex}`;
+        const saved = legOverrides[key];
+        const defaultEnabled = isDriver ? leg.scheme !== 'KP1' : true;
+        const enabled = saved?.enabled ?? defaultEnabled;
+        const days = saved?.days ?? leg.days;
+        const rate = saved?.rate ?? leg.rate;
+        const amount = saved?.amount ?? (enabled ? days * rate : 0);
+        return { ...leg, key, enabled, days, rate, amount };
+      });
 
-    const perDiemTotal = perParticipant.reduce((sum, pp) => sum + pp.total, 0);
-    const hotelTotal = perParticipant.reduce((sum, pp) => sum + pp.hotel, 0);
-    const pettyCashTotal = perParticipant.reduce(
-      (sum, pp) => sum + pp.pettyCash,
-      0
-    );
-    const driverDistanceIncentive = Number(
-      driverIncentiveOverride ?? base.driverTotal
-    ) || 0;
+      const allowance = isExternal
+        ? Number(externalAllowanceOverride[pp.name] ?? 0) || 0
+        : legs.reduce((sum, leg) => sum + (leg.enabled ? Number(leg.amount) || 0 : 0), 0);
 
-    const grandTotal =
-      perDiemTotal +
-      hotelTotal +
-      pettyCashTotal +
-      driverDistanceIncentive +
-      manualFuel +
-      manualEtoll;
+      const pettyFlags = legs.map((leg) => leg.enabled && eligiblePettyScheme(leg.scheme));
+      const pettyTrips = movementCount(pettyFlags);
+      const matrixKey = gradeKey(pp.jabatan) as keyof typeof travelMatrix;
+      const pettyRate = Number(travelMatrix[matrixKey]?.pettyCash) || 0;
+      const defaultPetty = isExternal || effectiveParticipants.length <= 1 ? 0 : pettyRate * pettyTrips;
+      const pettyCash = Number(pettyOverride[pp.name] ?? defaultPetty) || 0;
+      const hotel = hotelByHR ? 0 : Number(hotelOverride[pp.name] ?? pp.hotel) || 0;
 
-    const extraTotal = extraRows.reduce(
-      (sum, row) => sum + (Number(row.nominal) || 0),
-      0
-    );
+      return { ...pp, total: allowance, hotel, pettyCash, legs, pettyTrips };
+    });
 
-    return {
-      ...base,
-      perParticipant,
-      perDiemTotal,
-      hotelTotal,
-      pettyCashTotal,
-      driverTotal: driverDistanceIncentive,
-      driverDistanceIncentive,
-      grandTotal,
-      extraTotal,
-      effectiveKpScheme,
-      effectiveTripCategory,
-      effectiveParticipants,
-    };
-  }, [
-    selected,
-    schemeOverride,
-    kpScheme,
-    totalDays,
-    manualFuel,
-    manualEtoll,
-    hotelByHR,
-    allowanceOverride,
-    hotelOverride,
-    pettyOverride,
-    driverIncentiveOverride,
-    extraRows,
-    travelMatrix,
-    travelDKMatrix,
-    driverIncentive,
-  ]);
+    const perDiemTotal = participantRows.reduce((s, p) => s + p.total, 0);
+    const hotelTotal = participantRows.reduce((s, p) => s + p.hotel, 0);
+    const pettyCashTotal = participantRows.reduce((s, p) => s + p.pettyCash, 0);
+    const internalForHolder = effectiveParticipants.filter((p: any) => p.category !== 'Eksternal');
+    const pettyCashHolder = [...internalForHolder].sort((a: any, b: any) => rank(b.jabatan) - rank(a.jabatan))[0]?.name ?? null;
+    const driverDistanceIncentive = Number(driverIncentiveOverride ?? base.driverTotal) || 0;
+    const grandTotal = perDiemTotal + hotelTotal + pettyCashTotal + driverDistanceIncentive + manualFuel + manualEtoll;
+    const extraTotal = extraRows.reduce((s, r) => s + (Number(r.nominal) || 0), 0);
 
-  const defaultPT =
-    selected?.company_burden?.[0] || activePTMaster[0]?.name || '';
+    return { ...base, perParticipant: participantRows, perDiemTotal, hotelTotal, pettyCashTotal, pettyCashHolder, driverDistanceIncentive, grandTotal, extraTotal, effectiveParticipants };
+  }, [selected, totalDays, kpScheme, hotelByHR, manualFuel, manualEtoll, legOverrides, externalAllowanceOverride, hotelOverride, pettyOverride, driverIncentiveOverride, extraRows, travelMatrix, travelDKMatrix, driverIncentive]);
 
-  const getPTOptions = (currentPT?: string) => {
-    const activeNames = activePTMaster.map((pt) => pt.name);
-    const current = currentPT?.trim();
-    return current && !activeNames.includes(current)
-      ? [current, ...activeNames]
-      : activeNames;
+  const defaultPT = selected?.company_burden?.[0] || activePTMaster[0]?.name || '';
+  const getPTOptions = (current?: string) => {
+    const active = activePTMaster.map((pt) => pt.name);
+    return current && !active.includes(current) ? [current, ...active] : active;
+  };
+
+  const setLeg = (key: string, current: LegOverride, patch: Partial<LegOverride>) => {
+    const next = { ...current, ...patch };
+    if ('days' in patch || 'rate' in patch || 'enabled' in patch) next.amount = next.enabled ? next.days * next.rate : 0;
+    setLegOverrides((old) => ({ ...old, [key]: next }));
   };
 
   const generateCostSplitFromTableA = () => {
     if (!selected || !cost) return;
     const rows: CostSplitRow[] = [];
-
     const push = (name: string, nominal: number, keterangan: string) => {
       if (nominal <= 0) return;
-      rows.push({ id: uid(), name, nominal, keterangan, pt_burden: defaultPT });
+      rows.push({ id: crypto.randomUUID(), name, nominal, keterangan, pt_burden: defaultPT });
     };
 
     cost.perParticipant.forEach((pp) => {
-      push(pp.name, pp.total, 'Tunjangan Perjalanan Dinas');
+      pp.legs.forEach((leg: any) => push(pp.name, leg.enabled ? leg.amount : 0, `Tunjangan ${leg.scheme} · ${leg.days} hari`));
       push(pp.name, pp.hotel, 'Akomodasi');
-      push(pp.name, pp.pettyCash, 'Pettycash');
     });
-
-    push(
-      selected.obligo_driver_name || 'Driver',
-      cost.driverDistanceIncentive,
-      'Insentif Jarak Driver'
-    );
+    push(cost.pettyCashHolder || selected.requester_name, cost.pettyCashTotal, `Pettycash seluruh peserta · Holder: ${cost.pettyCashHolder || '-'}`);
+    push(selected.obligo_driver_name || 'Driver', cost.driverDistanceIncentive, 'Insentif Jarak Driver');
     push(selected.requester_name, manualFuel, 'BBM');
     push(selected.requester_name, manualEtoll, 'E-Toll');
-
     setExtraRows(rows);
-    showToast(
-      'info',
-      'Table A berhasil disalin ke Table B. Silakan sesuaikan pemecahan cost center.'
-    );
+    showToast('info', 'Table B dibentuk dari Table A. Pettycash digabung ke holder jabatan tertinggi; HR tetap dapat split/override.');
   };
 
-  const addExtraRow = () => {
-    setExtraRows((rows) => [
-      ...rows,
-      {
-        id: uid(),
-        name: selected?.requester_name ?? '',
-        nominal: 0,
-        keterangan: '',
-        pt_burden: defaultPT,
-      },
-    ]);
-  };
-
-  const updateExtraRow = (id: string, patch: Partial<CostSplitRow>) => {
-    setExtraRows((rows) =>
-      rows.map((row) => (row.id === id ? { ...row, ...patch } : row))
-    );
-  };
-
-  const removeExtraRow = (id: string) => {
-    setExtraRows((rows) => rows.filter((row) => row.id !== id));
-  };
+  const addExtraRow = () => setExtraRows((rows) => [...rows, { id: crypto.randomUUID(), name: selected?.requester_name ?? '', nominal: 0, keterangan: '', pt_burden: defaultPT }]);
+  const updateExtraRow = (id: string, patch: Partial<CostSplitRow>) => setExtraRows((rows) => rows.map((r) => r.id === id ? { ...r, ...patch } : r));
+  const removeExtraRow = (id: string) => setExtraRows((rows) => rows.filter((r) => r.id !== id));
 
   const persistCostSplit = async (tripId: string) => {
-    const deleted = await supabase
-      .from('disburse_rows')
-      .delete()
-      .eq('trip_id', tripId);
-    if (deleted.error) throw deleted.error;
-
+    const del = await supabase.from('disburse_rows').delete().eq('trip_id', tripId);
+    if (del.error) throw del.error;
     for (let i = 0; i < extraRows.length; i++) {
       const row = extraRows[i];
-      const result = await supabase.from('disburse_rows').insert({
-        id: row.id,
-        trip_id: tripId,
-        name: row.name,
-        nominal: Number(row.nominal) || 0,
-        component_note: row.keterangan,
-        pt_burden: row.pt_burden,
-        sort_order: i,
-      });
+      const result = await supabase.from('disburse_rows').insert({ id: row.id || crypto.randomUUID(), trip_id: tripId, name: row.name, nominal: Number(row.nominal) || 0, component_note: row.keterangan, pt_burden: row.pt_burden, sort_order: i });
       if (result.error) throw result.error;
     }
   };
 
-  const buildCostData = () => {
-    if (!cost) return null;
-
-    return {
-      hotelByHR,
-      totalDistance: selected?.total_distance ?? 'none',
-      scheme: cost.effectiveKpScheme,
-      perParticipant: cost.perParticipant,
-      effectiveParticipants: cost.effectiveParticipants,
-
-      assignedDriverName: selected?.obligo_driver_name ?? null,
-      driverDistanceIncentive: cost.driverDistanceIncentive,
-
-      // Legacy compatibility untuk data/modul lama.
-      assignedDriverCost: cost.driverDistanceIncentive,
-      externalDriverIncentive: cost.driverDistanceIncentive,
-
-      pettyCashHolder: cost.pettyCashHolder,
-      fuel: manualFuel,
-      etoll: manualEtoll,
-
-      totals: {
-        allowance: cost.perDiemTotal,
-        accommodation: cost.hotelTotal,
-        driverCost: cost.driverDistanceIncentive,
-        driverIncentive: cost.driverDistanceIncentive,
-        pettyCash: cost.pettyCashTotal,
-        fuel: manualFuel,
-        etoll: manualEtoll,
-        grandTotal: cost.grandTotal,
-      },
-
-      nonAccountable: {
-        allowance: cost.perDiemTotal,
-        driverCost: cost.driverDistanceIncentive,
-        driverIncentive: cost.driverDistanceIncentive,
-        total: cost.perDiemTotal + cost.driverDistanceIncentive,
-      },
-
-      accountable: {
-        accommodation: cost.hotelTotal,
-        pettyCash: cost.pettyCashTotal,
-        fuel: manualFuel,
-        etoll: manualEtoll,
-        total:
-          cost.hotelTotal + cost.pettyCashTotal + manualFuel + manualEtoll,
-      },
-
-      extraRows,
-    };
-  };
+  const buildCostData = () => cost ? {
+    hotelByHR,
+    scheme: kpScheme,
+    legOverrides,
+    perParticipant: cost.perParticipant,
+    effectiveParticipants: cost.effectiveParticipants,
+    assignedDriverName: selected?.obligo_driver_name ?? null,
+    driverDistanceIncentive: cost.driverDistanceIncentive,
+    pettyCashHolder: cost.pettyCashHolder,
+    fuel: manualFuel,
+    etoll: manualEtoll,
+    direksiApprovals: selected?.cost_data?.direksiApprovals ?? {},
+    totals: { allowance: cost.perDiemTotal, accommodation: cost.hotelTotal, driverCost: cost.driverDistanceIncentive, driverIncentive: cost.driverDistanceIncentive, pettyCash: cost.pettyCashTotal, fuel: manualFuel, etoll: manualEtoll, grandTotal: cost.grandTotal },
+    nonAccountable: { allowance: cost.perDiemTotal, driverCost: cost.driverDistanceIncentive, driverIncentive: cost.driverDistanceIncentive, total: cost.perDiemTotal + cost.driverDistanceIncentive },
+    accountable: { accommodation: cost.hotelTotal, pettyCash: cost.pettyCashTotal, fuel: manualFuel, etoll: manualEtoll, total: cost.hotelTotal + cost.pettyCashTotal + manualFuel + manualEtoll },
+    extraRows,
+  } : null;
 
   const saveDraft = async () => {
     if (!selected || !cost) return;
     try {
-      await updateTrip(selected.id, {
-        spd_number: spdNumber,
-        hr_notes: hrNotes || null,
-        kp_scheme: cost.effectiveKpScheme,
-        total_days: totalDays,
-        cost_grand_total: cost.grandTotal,
-        fuel_cost: manualFuel,
-        etoll_cost: manualEtoll,
-        cost_data: buildCostData(),
-      });
+      await updateTrip(selected.id, { spd_number: spdNumber, hr_notes: hrNotes || null, kp_scheme: kpScheme, total_days: totalDays, cost_grand_total: cost.grandTotal, fuel_cost: manualFuel, etoll_cost: manualEtoll, cost_data: buildCostData() });
       await persistCostSplit(selected.id);
       showToast('success', 'Draft Cost & Advance berhasil disimpan');
       refresh();
-    } catch (e: any) {
-      showToast('error', 'Gagal menyimpan draft: ' + e.message);
-    }
+    } catch (e: any) { showToast('error', 'Gagal menyimpan draft: ' + e.message); }
   };
 
   const approve = async () => {
     if (!selected || !cost) return;
-    if (!spdNumber.trim()) {
-      showToast('error', 'Nomor SPD wajib diisi');
-      return;
-    }
+    if (!spdNumber.trim()) return showToast('error', 'Nomor SPD wajib diisi');
+    if (Math.abs(cost.extraTotal - cost.grandTotal) > 0.01) return showToast('error', `Total Table B (${formatIDR(cost.extraTotal)}) harus sama dengan Grand Total (${formatIDR(cost.grandTotal)}).`);
+    if (extraRows.some((r) => !r.pt_burden?.trim())) return showToast('error', 'Seluruh baris Table B wajib memiliki Beban PT.');
 
-    const difference = Math.abs(cost.extraTotal - cost.grandTotal);
-    if (difference > 0.01) {
-      showToast(
-        'error',
-        `Total Table B (${formatIDR(cost.extraTotal)}) harus sama dengan Grand Total Advance (${formatIDR(cost.grandTotal)}).`
-      );
-      return;
-    }
-
-    if (extraRows.some((row) => !row.pt_burden?.trim())) {
-      showToast('error', 'Seluruh baris Table B wajib memiliki Beban PT.');
-      return;
-    }
+    const usedPT = Array.from(new Set(extraRows.filter((r) => Number(r.nominal) > 0).map((r) => r.pt_burden).filter(Boolean)));
+    const requestedPT = selected.company_burden ?? [];
+    const newPT = usedPT.filter((pt) => !requestedPT.includes(pt));
 
     try {
       await persistCostSplit(selected.id);
+      if (newPT.length > 0) {
+        const expanded = Array.from(new Set([...requestedPT, ...newPT]));
+        await updateTrip(selected.id, {
+          company_burden: expanded,
+          cost_data: buildCostData(),
+          cost_grand_total: cost.grandTotal,
+          fuel_cost: manualFuel,
+          etoll_cost: manualEtoll,
+          status: 'Pending Direksi Approval',
+        });
+        await supabase.from('trip_tracking').insert({ trip_id: selected.id, actor_name: profile?.name ?? '', actor_role: 'HR Manager', action: 'Cost Review added PT Burden', from_status: 'Pending HR Advance Review', to_status: 'Pending Direksi Approval', remarks: `PT baru: ${newPT.join(', ')}. Memerlukan approval Direksi PT terkait.` });
+        showToast('info', `Table B menambah PT ${newPT.join(', ')}. Trip dikembalikan ke Direksi untuk approval PT baru.`);
+        setSelected(null);
+        refresh();
+        return;
+      }
+
       const now = new Date().toISOString();
-
-      await updateTrip(selected.id, {
-        spd_number: spdNumber,
-        hr_notes: hrNotes || null,
-        kp_scheme: cost.effectiveKpScheme,
-        total_days: totalDays,
-        cost_grand_total: cost.grandTotal,
-        fuel_cost: manualFuel,
-        etoll_cost: manualEtoll,
-        cost_data: buildCostData(),
-        status: 'Approved / Ready for Trip',
-        approved_at: now,
-        spd_issued_at: now,
-      });
-
-      const tracking = await supabase.from('trip_tracking').insert({
-        trip_id: selected.id,
-        actor_name: profile?.name ?? '',
-        actor_role: 'HR Manager',
-        action: 'HR Cost & Advance Approved',
-        from_status: 'Pending HR Advance Review',
-        to_status: 'Approved / Ready for Trip',
-        remarks: hrNotes || 'Cost & Advance Review completed',
-      });
+      await updateTrip(selected.id, { spd_number: spdNumber, hr_notes: hrNotes || null, kp_scheme: kpScheme, total_days: totalDays, cost_grand_total: cost.grandTotal, fuel_cost: manualFuel, etoll_cost: manualEtoll, cost_data: buildCostData(), status: 'Approved / Ready for Trip', approved_at: now, spd_issued_at: now });
+      const tracking = await supabase.from('trip_tracking').insert({ trip_id: selected.id, actor_name: profile?.name ?? '', actor_role: 'HR Manager', action: 'HR Cost & Advance Approved', from_status: 'Pending HR Advance Review', to_status: 'Approved / Ready for Trip', remarks: hrNotes || 'Cost & Advance Review completed' });
       if (tracking.error) throw tracking.error;
-
       showToast('success', 'Cost & Advance disetujui. Trip siap dijalankan.');
-      setSelected(null);
-      refresh();
-    } catch (e: any) {
-      showToast('error', 'Gagal approve: ' + e.message);
-    }
+      setSelected(null); refresh();
+    } catch (e: any) { showToast('error', 'Gagal approve: ' + e.message); }
   };
 
   return (
     <div className="space-y-6 animate-slide-up max-w-6xl mx-auto">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600">
-          <Calculator className="w-5 h-5" />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">Cost & Advance Review</h2>
-          <p className="text-sm text-slate-500">
-            HR Manager · Review & Override · {queue.length} pengajuan menunggu
-          </p>
-        </div>
-      </div>
+      <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600"><Calculator className="w-5 h-5" /></div><div><h2 className="text-xl font-bold text-slate-900">Cost & Advance Review</h2><p className="text-sm text-slate-500">HR Manager · Review & Override · {queue.length} pengajuan menunggu</p></div></div>
 
-      {!selected && (
-        <Card className="p-6">
-          {queue.length === 0 ? (
-            <EmptyState
-              icon={<Calculator className="w-6 h-6" />}
-              title="Tidak ada pengajuan menunggu"
-              message="Tidak ada trip yang menunggu Cost & Advance Review."
-            />
-          ) : (
-            <div className="space-y-2">
-              {queue.map((t) => (
-                <div
-                  key={t.id}
-                  className="rounded-xl ring-1 ring-slate-100 hover:ring-brand-200 transition p-4 flex items-center justify-between gap-4 bg-white shadow-sm"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-base font-extrabold text-slate-900">{t.requester_name}</div>
-                    <div className="text-sm font-semibold text-slate-700 truncate mt-0.5">{t.purpose}</div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      {formatDate(t.departure_date)} · {daysBetween(t.departure_date, t.return_date)} hari ·{' '}
-                      {t.total_distance === 'gt400'
-                        ? '>400 KM'
-                        : t.total_distance === 'gt200'
-                          ? '>200 KM'
-                          : 'Jarak normal'}
-                    </div>
-                  </div>
-                  <Button size="sm" onClick={() => startReview(t)}>Review & Calculate</Button>
-                </div>
-              ))}
-            </div>
-          )}
+      {!selected && <Card className="p-6">{queue.length === 0 ? <EmptyState icon={<Calculator className="w-6 h-6" />} title="Tidak ada pengajuan menunggu" /> : <div className="space-y-2">{queue.map((t) => <div key={t.id} className="rounded-xl ring-1 ring-slate-100 p-4 flex items-center justify-between gap-4"><div><div className="font-bold">{t.requester_name}</div><div className="text-sm text-slate-600">{t.purpose}</div><div className="text-xs text-slate-400 mt-1">{formatDate(t.departure_date)} - {formatDate(t.return_date)} · Beban {(t.company_burden ?? []).join(', ')}</div></div><Button size="sm" onClick={() => startReview(t)}>Review & Calculate</Button></div>)}</div>}</Card>}
+
+      {selected && cost && <>
+        <Card className="p-6 space-y-4">
+          <div className="flex justify-between gap-3"><div><h3 className="font-bold text-slate-900">Ringkasan Permohonan</h3><p className="text-xs text-slate-500">Cross-check permohonan sebelum mengubah perhitungan.</p></div><button className="text-xs text-slate-400" onClick={() => setSelected(null)}>Tutup</button></div>
+          <div className="grid md:grid-cols-4 gap-3 text-xs"><Info label="Pemohon" value={`${selected.requester_name} · ${selected.requester_jabatan}`} /><Info label="PT Pemohon" value={selected.requester_pt || '-'} /><Info label="PT Beban" value={(selected.company_burden ?? []).join(', ') || '-'} /><Info label="Periode" value={`${formatDate(selected.departure_date)} - ${formatDate(selected.return_date)}`} /><Info label="Transport" value={selected.vehicle_type_choice || (selected.needs_vehicle ? 'Kendaraan Dinas' : 'Tidak ada')} /><Info label="Driver" value={selected.obligo_driver_name || (selected.needs_driver ? 'Diminta, belum assigned' : 'Tidak')} /><Info label="Kendaraan" value={selected.obligo_vehicle_plate || '-'} /><Info label="BBM / Toll" value={`${formatIDR(manualFuel)} / ${formatIDR(manualEtoll)}`} /></div>
+          <div className="overflow-x-auto"><table className="w-full text-xs border-collapse"><thead><tr className="bg-slate-50"><TH>No</TH><TH>Tanggal</TH><TH>Tujuan</TH><TH>Skema</TH><TH>Agenda</TH></tr></thead><tbody>{(selected.itinerary ?? []).map((leg, i) => <tr key={leg.id}><TD>{i + 1}</TD><TD>{formatDate(leg.start_date)} - {formatDate(leg.end_date)}</TD><TD>{leg.destination}{leg.destination_custom ? ` · ${leg.destination_custom}` : ''}</TD><TD>{leg.kpScheme || (leg.isWithinCity ? `DK ${leg.dkTier ?? ''}` : leg.isLuarkota ? 'LK' : '-')}</TD><TD>{leg.agenda || '-'}</TD></tr>)}</tbody></table></div>
+          <div className="text-xs text-slate-500">Peserta: {(selected.participants ?? []).map((p) => `${p.name} (${p.jabatan})`).join(', ') || '-'}{selected.obligo_driver_name ? `, ${selected.obligo_driver_name} (Driver - PIC Obligo)` : ''}</div>
         </Card>
-      )}
 
-      {selected && cost && (
-        <>
-          <Card className="p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">HR Cost Override</h3>
-                <p className="text-xs text-slate-500 mt-1">{selected.requester_name} · {selected.purpose}</p>
-              </div>
-              <button
-                onClick={() => setSelected(null)}
-                className="text-slate-400 hover:text-slate-600 text-xs font-semibold"
-              >
-                Tutup
-              </button>
-            </div>
+        <Card className="p-6 space-y-4">
+          <h3 className="font-bold text-slate-900">A. Rincian Perhitungan & Override HR</h3>
+          <p className="text-xs text-slate-500">Hari, rate dan nominal dapat dikoreksi per peserta × leg. Untuk Driver, KP1 default tidak aktif karena assignment umumnya pada perjalanan darat/site; HR dapat mengaktifkan bila diperlukan.</p>
+          {cost.perParticipant.map((pp: any) => <div key={pp.name} className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 px-4 py-3 flex justify-between"><div><strong>{pp.name}</strong> <span className="text-slate-400">· {pp.jabatan}</span></div><strong>{formatIDR(pp.total + pp.hotel + pp.pettyCash)}</strong></div>
+            {pp.legs.length > 0 ? <div className="overflow-x-auto"><table className="w-full text-xs border-collapse"><thead><tr><TH>Aktif</TH><TH>Skema</TH><TH>Tujuan</TH><TH>Hari</TH><TH>Rate</TH><TH>Nominal</TH></tr></thead><tbody>{pp.legs.map((leg: any) => <tr key={leg.key}><TD><input type="checkbox" checked={leg.enabled} onChange={(e) => setLeg(leg.key, leg, { enabled: e.target.checked })} /></TD><TD>{leg.scheme}</TD><TD>{leg.destination}</TD><TD><Input className="text-xs" type="number" min={0} value={leg.days} onChange={(e) => setLeg(leg.key, leg, { days: Number(e.target.value) || 0 })} /></TD><TD><Input className="text-xs" type="number" min={0} value={leg.rate} onChange={(e) => setLeg(leg.key, leg, { rate: Number(e.target.value) || 0 })} /></TD><TD><Input className="text-xs" type="number" min={0} value={leg.amount} onChange={(e) => setLegOverrides((old) => ({ ...old, [leg.key]: { enabled: leg.enabled, days: leg.days, rate: leg.rate, amount: Number(e.target.value) || 0 } }))} /></TD></tr>)}</tbody></table></div> : <div className="p-4"><Field label="Tunjangan Manual"><Input type="number" min={0} value={pp.total} onChange={(e) => setExternalAllowanceOverride((old) => ({ ...old, [pp.name]: Number(e.target.value) || 0 }))} /></Field></div>}
+            <div className="grid md:grid-cols-3 gap-3 p-4 border-t border-slate-100"><Field label="Akomodasi"><Input type="number" min={0} disabled={hotelByHR} value={pp.hotel} onChange={(e) => setHotelOverride((old) => ({ ...old, [pp.name]: Number(e.target.value) || 0 }))} /></Field><Field label={`Pettycash · ${pp.pettyTrips} movement`}><Input type="number" min={0} value={pp.pettyCash} onChange={(e) => setPettyOverride((old) => ({ ...old, [pp.name]: Number(e.target.value) || 0 }))} /></Field><div className="text-xs text-slate-500 self-end pb-2">Pettycash hanya menghitung movement pada LK/KP2/KPO. KP1 tidak eligible.</div></div>
+          </div>)}
 
-            <div className="grid md:grid-cols-3 gap-4">
-              <Field label="Total Hari Dinas">
-                <Input
-                  type="number"
-                  min={1}
-                  value={totalDays}
-                  onChange={(e) => setTotalDays(parseInt(e.target.value) || 1)}
-                />
-              </Field>
-              <Field label="BBM (Rp)">
-                <Input
-                  type="number"
-                  min={0}
-                  value={manualFuel}
-                  onChange={(e) => setManualFuel(parseFloat(e.target.value) || 0)}
-                />
-              </Field>
-              <Field label="E-Toll (Rp)">
-                <Input
-                  type="number"
-                  min={0}
-                  value={manualEtoll}
-                  onChange={(e) => setManualEtoll(parseFloat(e.target.value) || 0)}
-                />
-              </Field>
-            </div>
+          <div className="grid md:grid-cols-4 gap-3"><Field label="Total Hari Administratif"><Input type="number" min={1} value={totalDays} onChange={(e) => setTotalDays(Number(e.target.value) || 1)} /></Field><Field label="BBM"><Input type="number" min={0} value={manualFuel} onChange={(e) => setManualFuel(Number(e.target.value) || 0)} /></Field><Field label="E-Toll"><Input type="number" min={0} value={manualEtoll} onChange={(e) => setManualEtoll(Number(e.target.value) || 0)} /></Field><Field label="Insentif Jarak Driver"><Input type="number" min={0} value={cost.driverDistanceIncentive} onChange={(e) => setDriverIncentiveOverride(Number(e.target.value) || 0)} /></Field></div>
+          <label className="flex gap-2 text-xs"><input type="checkbox" checked={hotelByHR} onChange={(e) => setHotelByHR(e.target.checked)} /> Akomodasi dipesankan HR (advance akomodasi = Rp0)</label>
+          <div className="rounded-xl bg-brand-50 p-4 grid md:grid-cols-3 gap-3"><Info label="Tunjangan" value={formatIDR(cost.perDiemTotal)} /><Info label={`Pettycash · Holder ${cost.pettyCashHolder || '-'}`} value={formatIDR(cost.pettyCashTotal)} /><Info label="Grand Total" value={formatIDR(cost.grandTotal)} /></div>
+        </Card>
 
-            <Field label="Override Skema Perhitungan">
-              <Select value={schemeOverride} onChange={(e) => setSchemeOverride(e.target.value)}>
-                <option value="">Auto dari itinerary</option>
-                {SCHEME_OVERRIDE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </Select>
-            </Field>
+        <Card className="p-6 space-y-4">
+          <div className="flex justify-between gap-3 flex-wrap"><div><h3 className="font-bold">B. Rangkuman Pembiayaan & Cost Center</h3><p className="text-xs text-slate-500">Default PT mengikuti request. Pettycash digabung ke holder; komponen lain tetap pecah. HR dapat split/override.</p></div><div className="flex gap-2"><Button size="sm" variant="secondary" onClick={generateCostSplitFromTableA}>Auto-Fill Table A</Button><Button size="sm" variant="secondary" icon={<Plus className="w-3.5 h-3.5" />} onClick={addExtraRow}>Add Row</Button></div></div>
+          {extraRows.length === 0 ? <EmptyState title="Cost center belum diisi" /> : <div className="overflow-x-auto"><table className="w-full text-xs border-collapse"><thead><tr className="bg-slate-50"><TH>Nama</TH><TH>Komponen</TH><TH>Nominal</TH><TH>Beban PT</TH><TH></TH></tr></thead><tbody>{extraRows.map((row) => <tr key={row.id}><TD><Input className="text-xs" value={row.name} onChange={(e) => updateExtraRow(row.id, { name: e.target.value })} /></TD><TD><Input className="text-xs" value={row.keterangan} onChange={(e) => updateExtraRow(row.id, { keterangan: e.target.value })} /></TD><TD><Input className="text-xs" type="number" min={0} value={row.nominal} onChange={(e) => updateExtraRow(row.id, { nominal: Number(e.target.value) || 0 })} /></TD><TD><Select className="text-xs" value={row.pt_burden} onChange={(e) => updateExtraRow(row.id, { pt_burden: e.target.value })}>{getPTOptions(row.pt_burden).map((pt) => <option key={pt}>{pt}</option>)}</Select></TD><TD><button onClick={() => removeExtraRow(row.id)} className="text-rose-500"><Trash2 className="w-4 h-4" /></button></TD></tr>)}</tbody></table></div>}
+          <div className="grid md:grid-cols-3 gap-3"><Info label="Total Table B" value={formatIDR(cost.extraTotal)} /><Info label="Grand Total" value={formatIDR(cost.grandTotal)} /><Info label="Selisih" value={formatIDR(cost.extraTotal - cost.grandTotal)} /></div>
+        </Card>
 
-            <label className="flex items-start gap-3 cursor-pointer bg-amber-50/60 p-4 rounded-xl border border-amber-200">
-              <input
-                type="checkbox"
-                checked={hotelByHR}
-                onChange={(e) => setHotelByHR(e.target.checked)}
-                className="w-4 h-4 mt-0.5 rounded text-brand-600 focus:ring-brand-500"
-              />
-              <div>
-                <div className="text-xs font-bold text-amber-900">Akomodasi dipesankan oleh HR</div>
-                <div className="text-[11px] text-amber-700 mt-0.5">
-                  Jika dicentang, nilai akomodasi yang dicairkan menjadi Rp0. Jika tidak, akomodasi eligible masuk advance.
-                </div>
-              </div>
-            </label>
-          </Card>
-
-          <Card className="p-6 space-y-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">A. Rincian Perhitungan & Override HR</h3>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Matrix menjadi default. Driver hasil assignment PIC Obligo otomatis menjadi participant. External default Rp0 dan dapat diisi manual oleh HR.
-              </p>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse border border-slate-200">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-700">
-                    <th className="border border-slate-200 px-2 py-2 text-left">Nama</th>
-                    <th className="border border-slate-200 px-2 py-2">Jabatan</th>
-                    <th className="border border-slate-200 px-2 py-2">Hari</th>
-                    <th className="border border-slate-200 px-2 py-2">Tunjangan</th>
-                    <th className="border border-slate-200 px-2 py-2">Akomodasi</th>
-                    <th className="border border-slate-200 px-2 py-2">Pettycash</th>
-                    <th className="border border-slate-200 px-2 py-2">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cost.perParticipant.map((pp, index) => {
-                    const subtotal = pp.total + pp.hotel + pp.pettyCash;
-                    return (
-                      <tr key={`${pp.name}-${index}`}>
-                        <td className="border border-slate-200 px-2 py-2 font-semibold">{pp.name}</td>
-                        <td className="border border-slate-200 px-2 py-2 text-center">{pp.jabatan}</td>
-                        <td className="border border-slate-200 px-2 py-2 text-center">{pp.days}</td>
-                        <td className="border border-slate-200 p-1.5">
-                          <Input
-                            type="number"
-                            min={0}
-                            value={pp.total}
-                            onChange={(e) =>
-                              setAllowanceOverride((old) => ({
-                                ...old,
-                                [pp.name]: parseFloat(e.target.value) || 0,
-                              }))
-                            }
-                            className="text-xs"
-                          />
-                        </td>
-                        <td className="border border-slate-200 p-1.5">
-                          {hotelByHR ? (
-                            <div className="text-center text-slate-400">Dipesan HR</div>
-                          ) : (
-                            <Input
-                              type="number"
-                              min={0}
-                              value={pp.hotel}
-                              onChange={(e) =>
-                                setHotelOverride((old) => ({
-                                  ...old,
-                                  [pp.name]: parseFloat(e.target.value) || 0,
-                                }))
-                              }
-                              className="text-xs"
-                            />
-                          )}
-                        </td>
-                        <td className="border border-slate-200 p-1.5">
-                          <Input
-                            type="number"
-                            min={0}
-                            value={pp.pettyCash}
-                            onChange={(e) =>
-                              setPettyOverride((old) => ({
-                                ...old,
-                                [pp.name]: parseFloat(e.target.value) || 0,
-                              }))
-                            }
-                            className="text-xs"
-                          />
-                        </td>
-                        <td className="border border-slate-200 px-2 py-2 text-right font-bold">{formatIDR(subtotal)}</td>
-                      </tr>
-                    );
-                  })}
-
-                  {selected.obligo_driver_name && (
-                    <tr className="bg-emerald-50/40">
-                      <td className="border border-slate-200 px-2 py-2 font-semibold">{selected.obligo_driver_name}</td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">Driver</td>
-                      <td className="border border-slate-200 px-2 py-2 text-center">Per Trip</td>
-                      <td colSpan={2} className="border border-slate-200 px-2 py-2 text-center text-slate-500">Insentif Jarak</td>
-                      <td className="border border-slate-200 p-1.5">
-                        <Input
-                          type="number"
-                          min={0}
-                          value={cost.driverDistanceIncentive}
-                          onChange={(e) => setDriverIncentiveOverride(parseFloat(e.target.value) || 0)}
-                          className="text-xs"
-                        />
-                      </td>
-                      <td className="border border-slate-200 px-2 py-2 text-right font-bold">{formatIDR(cost.driverDistanceIncentive)}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-3">
-              <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 flex justify-between text-sm">
-                <span className="text-slate-600">BBM</span><strong>{formatIDR(manualFuel)}</strong>
-              </div>
-              <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 flex justify-between text-sm">
-                <span className="text-slate-600">E-Toll</span><strong>{formatIDR(manualEtoll)}</strong>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-brand-50 border border-brand-200 p-4">
-              <div className="grid md:grid-cols-3 gap-3 text-xs">
-                <CostSummary label="Tunjangan" value={cost.perDiemTotal} />
-                <CostSummary label="Akomodasi" value={cost.hotelTotal} />
-                <CostSummary label="Insentif Jarak Driver" value={cost.driverDistanceIncentive} />
-                <CostSummary label="Pettycash" value={cost.pettyCashTotal} />
-                <CostSummary label="BBM" value={manualFuel} />
-                <CostSummary label="E-Toll" value={manualEtoll} />
-              </div>
-              <div className="flex justify-between items-center mt-4 pt-3 border-t border-brand-200">
-                <span className="font-bold text-brand-900">Grand Total Advance</span>
-                <span className="text-xl font-black text-brand-900">{formatIDR(cost.grandTotal)}</span>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6 space-y-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800">B. Rangkuman Pembiayaan & Cost Center</h3>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  PT Burden tidak dibatasi PT Access. HR dapat split, mengganti PT, dan mengubah nominal. Total Table B wajib sama dengan Table A.
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="secondary" onClick={generateCostSplitFromTableA}>Auto-Fill Table A</Button>
-                <Button size="sm" variant="secondary" icon={<Plus className="w-3.5 h-3.5" />} onClick={addExtraRow}>Add Row</Button>
-              </div>
-            </div>
-
-            {extraRows.length === 0 ? (
-              <EmptyState
-                icon={<Calculator className="w-5 h-5" />}
-                title="Cost center belum diisi"
-                message="Klik Auto-Fill Table A untuk membuat rincian pembiayaan."
-              />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse border border-slate-200">
-                  <thead>
-                    <tr className="bg-slate-50">
-                      <th className="border border-slate-200 px-2 py-2">Nama</th>
-                      <th className="border border-slate-200 px-2 py-2">Nominal</th>
-                      <th className="border border-slate-200 px-2 py-2">Komponen</th>
-                      <th className="border border-slate-200 px-2 py-2">Beban PT</th>
-                      <th className="border border-slate-200 px-2 py-2 w-10">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {extraRows.map((row) => (
-                      <tr key={row.id}>
-                        <td className="border border-slate-200 p-1.5">
-                          <Input value={row.name} onChange={(e) => updateExtraRow(row.id, { name: e.target.value })} className="text-xs" />
-                        </td>
-                        <td className="border border-slate-200 p-1.5">
-                          <Input type="number" min={0} value={row.nominal} onChange={(e) => updateExtraRow(row.id, { nominal: parseFloat(e.target.value) || 0 })} className="text-xs" />
-                        </td>
-                        <td className="border border-slate-200 p-1.5">
-                          <Input value={row.keterangan} onChange={(e) => updateExtraRow(row.id, { keterangan: e.target.value })} className="text-xs" />
-                        </td>
-                        <td className="border border-slate-200 p-1.5">
-                          <Select value={row.pt_burden} onChange={(e) => updateExtraRow(row.id, { pt_burden: e.target.value })} className="text-xs">
-                            {getPTOptions(row.pt_burden).map((pt) => <option key={pt} value={pt}>{pt}</option>)}
-                          </Select>
-                        </td>
-                        <td className="border border-slate-200 p-1.5 text-center">
-                          <button onClick={() => removeExtraRow(row.id)} className="text-rose-500 hover:text-rose-700">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div className="grid md:grid-cols-3 gap-3">
-              <CostSummary label="Total Table B" value={cost.extraTotal} />
-              <CostSummary label="Grand Total Advance" value={cost.grandTotal} />
-              <CostSummary label="Selisih" value={cost.extraTotal - cost.grandTotal} />
-            </div>
-          </Card>
-
-          <Card className="p-6 space-y-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <Field label="Nomor SPD" required>
-                <Input value={spdNumber} onChange={(e) => setSpdNumber(e.target.value)} />
-              </Field>
-              <Field label="HR Notes">
-                <Textarea rows={3} value={hrNotes} onChange={(e) => setHrNotes(e.target.value)} />
-              </Field>
-            </div>
-            <div className="flex justify-end gap-2 flex-wrap">
-              <Button size="sm" variant="secondary" icon={<FileText className="w-3.5 h-3.5" />} onClick={() => onPrint(selected.id)}>Preview PDF</Button>
-              <Button size="sm" variant="secondary" icon={<Save className="w-3.5 h-3.5" />} onClick={saveDraft}>Save Draft</Button>
-              <Button size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={approve}>Approve Advance</Button>
-            </div>
-          </Card>
-        </>
-      )}
+        <Card className="p-6 space-y-4"><div className="grid md:grid-cols-2 gap-4"><Field label="Nomor SPD" required><Input value={spdNumber} onChange={(e) => setSpdNumber(e.target.value)} /></Field><Field label="HR Notes"><Textarea rows={3} value={hrNotes} onChange={(e) => setHrNotes(e.target.value)} /></Field></div><div className="flex justify-end gap-2 flex-wrap"><Button size="sm" variant="secondary" icon={<FileText className="w-3.5 h-3.5" />} onClick={() => onPrint(selected.id)}>Surat Perjalanan Dinas</Button><Button size="sm" variant="secondary" icon={<Save className="w-3.5 h-3.5" />} onClick={saveDraft}>Save Draft</Button><Button size="sm" icon={<Check className="w-3.5 h-3.5" />} onClick={approve}>Approve Advance</Button></div></Card>
+      </>}
     </div>
   );
 }
 
-function CostSummary({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl bg-white border border-slate-200 p-3">
-      <div className="text-[10px] uppercase tracking-wide text-slate-400 font-bold">{label}</div>
-      <div className="text-sm font-bold text-slate-900 mt-1">{formatIDR(value)}</div>
-    </div>
-  );
-}
+function Info({ label, value }: { label: string; value: string }) { return <div className="rounded-xl bg-slate-50 border border-slate-100 p-3"><div className="text-[10px] uppercase tracking-wide text-slate-400 font-bold">{label}</div><div className="text-xs font-semibold text-slate-800 mt-1">{value}</div></div>; }
+function TH({ children }: { children: React.ReactNode }) { return <th className="border border-slate-200 px-2 py-2 text-left font-semibold text-slate-600">{children}</th>; }
+function TD({ children }: { children: React.ReactNode }) { return <td className="border border-slate-200 px-2 py-2 align-top">{children}</td>; }
