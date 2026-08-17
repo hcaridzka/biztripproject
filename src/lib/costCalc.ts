@@ -515,20 +515,40 @@ export function computePettyCash(
     amount: number;
   }[];
 } {
-  const internalParticipants =
-  participants.filter(
-    (participant) =>
-      (participant.category ?? 'Internal') !==
-        'Eksternal' &&
-      participant.jabatan !==
-        'Driver'
-  );
+  /*
+   * HEADCOUNT PERJALANAN
+   *
+   * Semua orang yang benar-benar ikut perjalanan
+   * dihitung untuk menentukan eligibility pettycash:
+   *
+   * - Internal
+   * - Eksternal
+   * - Driver assigned PIC Obligo
+   *
+   * Driver assigned harus sudah dimasukkan ke
+   * effective participants sebelum fungsi ini dipanggil.
+   */
+  const tripHeadcount =
+    participants.length;
+
+  /*
+   * PENERIMA PETTYCASH
+   *
+   * Hanya participant internal.
+   *
+   * Eksternal ikut menentukan headcount,
+   * tetapi tidak otomatis menerima benefit matrix.
+   */
+  const eligibleRecipients =
+    participants.filter(
+      (participant) =>
+        (participant.category ?? 'Internal') !==
+        'Eksternal'
+    );
 
   /*
    * Pettycash berlaku untuk:
    * LK / KP2 / KPO
-   *
-   * Mengikuti logic existing.
    */
   const pettyCashEligible =
     itinerary.some((leg) => {
@@ -544,7 +564,8 @@ export function computePettyCash(
 
   if (
     !pettyCashEligible ||
-    internalParticipants.length <= 1
+    tripHeadcount <= 1 ||
+    eligibleRecipients.length === 0
   ) {
     return {
       total: 0,
@@ -563,10 +584,10 @@ export function computePettyCash(
     itinerary.length + 1;
 
   /*
-   * Holder = jabatan tertinggi.
+   * Holder hanya dari participant internal.
    */
   const holder =
-    [...internalParticipants].sort(
+    [...eligibleRecipients].sort(
       (a, b) =>
         JABATAN_RANK[b.jabatan] -
         JABATAN_RANK[a.jabatan]
@@ -579,7 +600,7 @@ export function computePettyCash(
     );
 
   const perPersonBreakdown =
-    internalParticipants.map(
+    eligibleRecipients.map(
       (participant) => {
         const grade =
           getGradeMatrix(
@@ -591,8 +612,10 @@ export function computePettyCash(
           name:
             participant.name ||
             '(Belum diisi)',
+
           jabatan:
             participant.jabatan,
+
           amount:
             grade.pettyCash *
             trips,
@@ -603,20 +626,24 @@ export function computePettyCash(
   const total =
     perPersonBreakdown.reduce(
       (sum, participant) =>
-        sum + participant.amount,
+        sum +
+        participant.amount,
       0
     );
 
   return {
     total,
-    holder: holder.name,
+    holder:
+      holder.name,
+
     perPerson:
       holderMatrix.pettyCash,
+
     trips,
+
     perPersonBreakdown,
   };
 }
-
 // =========================================================
 // COST BREAKDOWN TYPES
 // =========================================================
@@ -725,47 +752,45 @@ export function computeCost(params: {
     );
 
   // =======================================================
-  // DRIVER
-  //
-  // Driver adalah driver internal yang diassign PIC Obligo.
-  // Driver BUKAN participant perjalanan.
-  //
-  // Driver Cost =
-  // Tunjangan Harian Driver
-  // + Insentif Jarak flat per trip
-  // =======================================================
+// DRIVER DISTANCE INCENTIVE
+//
+// Driver sendiri sudah menjadi effective participant.
+// Tunjangan + pettycash dihitung melalui participant.
+//
+// Yang terpisah hanya insentif jarak.
+// =======================================================
 
-  const driverGrade =
-    matrix.TAD ??
-    DEFAULT_MATRIX.TAD;
+const hasDriverParticipant =
+  participants.some(
+    (participant) =>
+      participant.jabatan ===
+      'Driver' &&
+      (
+        participant.category ??
+        'Internal'
+      ) !== 'Eksternal'
+  );
 
-  const driverDailyAllowance =
-    needsDriver
-      ? driverGrade.luarKota *
-        tripDays
-      : 0;
+let driverDistanceIncentive = 0;
 
-  let driverDistanceIncentive = 0;
+if (
+  hasDriverParticipant &&
+  totalDistance === 'gt200'
+) {
+  driverDistanceIncentive =
+    driverIncentive.gt200;
+}
 
-  if (
-    needsDriver &&
-    totalDistance === 'gt200'
-  ) {
-    driverDistanceIncentive =
-      driverIncentive.gt200;
-  }
+if (
+  hasDriverParticipant &&
+  totalDistance === 'gt400'
+) {
+  driverDistanceIncentive =
+    driverIncentive.gt400;
+}
 
-  if (
-    needsDriver &&
-    totalDistance === 'gt400'
-  ) {
-    driverDistanceIncentive =
-      driverIncentive.gt400;
-  }
-
-  const driverTotal =
-    driverDailyAllowance +
-    driverDistanceIncentive;
+const driverTotal =
+  driverDistanceIncentive;
 
   // =======================================================
   // PETTY CASH
@@ -784,23 +809,111 @@ export function computeCost(params: {
    *
    * Driver PIC Obligo tidak diproses di sini.
    */
-  const internalParticipants =
-    participants.filter(
-      (participant) =>
-        (participant.category ?? 'Internal') !==
-        'Eksternal' &&
-        participant.jabatan !==
-        'Driver'
-    );
 
   // =======================================================
   // PARTICIPANTS
   // =======================================================
 
   const perParticipant:
-    PerParticipant[] =
-    internalParticipants.map(
-      (participant) => {
+  PerParticipant[] =
+  participants.map(
+    (participant) => {
+      /*
+       * External participant tetap muncul
+       * di Table A tetapi tidak mempunyai
+       * automatic entitlement.
+       *
+       * HR dapat memberikan nominal melalui
+       * manual override di Cost Review.
+       */
+      if (
+        participant.category ===
+        'Eksternal'
+      ) {
+        return {
+          name:
+            participant.name ||
+            '(Belum diisi)',
+
+          jabatan:
+            participant.jabatan,
+
+          perDay: 0,
+
+          days:
+            tripDays,
+
+          total: 0,
+
+          hotel: 0,
+
+          driver: 0,
+
+          pettyCash: 0,
+
+          breakdown:
+            'Eksternal — Manual HR',
+
+          legs: [],
+        };
+      }
+
+      const participantCost =
+        perDiemForParticipant(
+          participant,
+          itinerary,
+          origin,
+          matrix,
+          dkMatrix
+        );
+
+      const hotel =
+        hotelByHR
+          ? 0
+          : participantCost.hotel;
+
+      const pettyAmount =
+        petty.perPersonBreakdown.find(
+          (item) =>
+            item.name ===
+            (
+              participant.name ||
+              '(Belum diisi)'
+            )
+        )?.amount ?? 0;
+
+      return {
+        name:
+          participant.name ||
+          '(Belum diisi)',
+
+        jabatan:
+          participant.jabatan,
+
+        perDay:
+          participantCost.perDay,
+
+        days:
+          tripDays,
+
+        total:
+          participantCost.total,
+
+        hotel,
+
+        driver: 0,
+
+        pettyCash:
+          pettyAmount,
+
+        breakdown:
+          participantCost.breakdown,
+
+        legs:
+          participantCost.legs,
+      };
+    }
+  );
         const participantCost =
           perDiemForParticipant(
             participant,
