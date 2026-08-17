@@ -28,7 +28,6 @@ import {
 } from './ui-shared';
 
 import {
-  PT_OPTIONS,
   SCHEME_OVERRIDE_OPTIONS,
 } from '../lib/constants';
 
@@ -70,17 +69,20 @@ export function CostCalculation({
   const { profile } = useAuth();
 
   const {
-    trips,
-    disburseRows,
-    
-    updateTrip,
-    showToast,
-    refresh,
-    
-    travelMatrix,
-    travelDKMatrix,
-    driverIncentive
-  } = useApp();
+  trips,
+  disburseRows,
+
+  updateTrip,
+  showToast,
+  refresh,
+
+  travelMatrix,
+  travelDKMatrix,
+  driverIncentive,
+
+  ptMaster,
+  activePTMaster,
+} = useApp();
 
   const [selected, setSelected] =
     useState<BizTrip | null>(null);
@@ -684,10 +686,43 @@ export function CostCalculation({
       driverIncentive,
     ]);
 
-  const defaultPT =
-    selected
-      ?.company_burden?.[0] ||
-    PT_OPTIONS[0];
+const defaultPT =
+  selected
+    ?.company_burden?.[0] ||
+  activePTMaster[0]?.name ||
+  '';
+
+const getPTOptions = (
+  currentPT?: string
+) => {
+  const activeNames =
+    activePTMaster.map(
+      (pt) => pt.name
+    );
+
+  /*
+   * Historical protection:
+   *
+   * Kalau PT pada row lama sudah inactive
+   * atau bahkan sudah tidak ada di master,
+   * tetap tampil selama sedang digunakan
+   * oleh row tersebut.
+   */
+  const current =
+    currentPT?.trim();
+
+  if (
+    current &&
+    !activeNames.includes(current)
+  ) {
+    return [
+      current,
+      ...activeNames,
+    ];
+  }
+
+  return activeNames;
+};
 
   /*
    * TABLE A → TABLE B
@@ -2140,20 +2175,16 @@ export function CostCalculation({
                               className="text-xs"
                             >
 
-                              {PT_OPTIONS.map(
+                              {getPTOptions(
+                                row.pt_burden
+                              ).map(
                                 (pt) => (
-
                                   <option
-                                    key={
-                                      pt
-                                    }
-                                    value={
-                                      pt
-                                    }
+                                    key={pt}
+                                    value={pt}
                                   >
                                     {pt}
                                   </option>
-
                                 )
                               )}
 
