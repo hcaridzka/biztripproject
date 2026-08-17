@@ -124,13 +124,6 @@ export function CostCalculation({
   >({});
 
   const [
-    driverOverride,
-    setDriverOverride,
-  ] = useState<
-    Record<string, number>
-  >({});
-
-  const [
     pettyOverride,
     setPettyOverride,
   ] = useState<
@@ -251,10 +244,6 @@ export function CostCalculation({
       Record<string, number> =
         {};
 
-    const driverMap:
-      Record<string, number> =
-        {};
-
     const pettyMap:
       Record<string, number> =
         {};
@@ -284,15 +273,6 @@ export function CostCalculation({
         }
 
         if (
-          p.driver !== undefined
-        ) {
-          driverMap[p.name] =
-            Number(
-              p.driver
-            ) || 0;
-        }
-
-        if (
           p.pettyCash !== undefined
         ) {
           pettyMap[p.name] =
@@ -311,25 +291,15 @@ export function CostCalculation({
       hotelMap
     );
 
-    setDriverOverride(
-      driverMap
-    );
-
     setPettyOverride(
       pettyMap
     );
 
-    ssetAssignedDriverCostOverride(
-  saved.assignedDriverCost !==
-    undefined
-    ? Number(
-        saved.assignedDriverCost
-      ) || 0
-    : saved.assignedDriverCost !==
-        undefined
-      ? Number(
-          saved.assignedDriverCost
-        ) || 0
+    setAssignedDriverCostOverride(
+  saved.assignedDriverCost !== undefined
+    ? Number(saved.assignedDriverCost) || 0
+    : saved.externalDriverIncentive !== undefined
+      ? Number(saved.externalDriverIncentive) || 0
       : null
 );
 
@@ -531,12 +501,6 @@ export function CostCalculation({
                     pp.hotel
                   );
 
-            const driver =
-              driverOverride[
-                pp.name
-              ] ??
-              pp.driver;
-
             const pettyCash =
               pettyOverride[
                 pp.name
@@ -556,10 +520,7 @@ export function CostCalculation({
                   hotel
                 ) || 0,
 
-              driver:
-                Number(
-                  driver
-                ) || 0,
+              driver: 0,
 
               pettyCash:
                 Number(
@@ -582,14 +543,6 @@ export function CostCalculation({
           (sum, pp) =>
             sum +
             pp.hotel,
-          0
-        );
-
-      const participantDriverTotal =
-        perParticipant.reduce(
-          (sum, pp) =>
-            sum +
-            pp.driver,
           0
         );
 
@@ -661,7 +614,6 @@ const driverTotal =
       hotelByHR,
       allowanceOverride,
       hotelOverride,
-      driverOverride,
       pettyOverride,
       assignedDriverCostOverride,
       extraRows,
@@ -768,26 +720,6 @@ const getPTOptions = (
           }
 
           if (
-            pp.driver > 0
-          ) {
-            rows.push({
-              id: uid(),
-
-              name:
-                pp.name,
-
-              nominal:
-                pp.driver,
-
-              keterangan:
-                'Tunjangan & Insentif Driver',
-
-              pt_burden:
-                defaultPT,
-            });
-          }
-
-          if (
             pp.pettyCash > 0
           ) {
             rows.push({
@@ -828,7 +760,7 @@ const getPTOptions = (
             cost.assignedDriverCost,
 
           keterangan:
-            'Insentif Jarak Driver',
+            'Tunjangan & Insentif Jarak Driver',
 
           pt_burden:
             defaultPT,
@@ -1018,44 +950,98 @@ const getPTOptions = (
    * Pemisahan ini akan kita pakai
    * untuk Settlement.
    */
-  const buildCostData =
-    () => {
-      if (!cost) {
-        return null;
-      }
+ const buildCostData =
+  () => {
+    if (!cost) {
+      return null;
+    }
 
-      return {
-        hotelByHR,
+    return {
+      // ===================================================
+      // BASIC COST CONFIG
+      // ===================================================
 
-        totalDistance:
-          selected
-            ?.total_distance ??
-          'none',
+      hotelByHR,
 
-        scheme:
-          cost.effectiveKpScheme,
+      totalDistance:
+        selected
+          ?.total_distance ??
+        'none',
 
-        perParticipant:
-          cost.perParticipant,
+      scheme:
+        cost.effectiveKpScheme,
 
-        assignedDriverName:
-  selected
-    ?.obligo_driver_name ??
-  null,
+      // ===================================================
+      // PARTICIPANT COST
+      // ===================================================
 
-assignedDriverCost:
-  cost.assignedDriverCost,
+      perParticipant:
+        cost.perParticipant,
 
-/*
- * Compatibility untuk record lama.
- * Nanti setelah seluruh histori aman,
- * legacy key ini bisa dibuang.
- */
-externalDriverIncentive:
-  cost.assignedDriverCost,
+      // ===================================================
+      // ASSIGNED DRIVER
+      //
+      // Driver internal ditentukan PIC Obligo
+      // dan bukan participant perjalanan.
+      // ===================================================
 
-        pettyCashHolder:
-          cost.pettyCashHolder,
+      assignedDriverName:
+        selected
+          ?.obligo_driver_name ??
+        null,
+
+      assignedDriverCost:
+        cost.assignedDriverCost,
+
+      /*
+       * Legacy compatibility.
+       *
+       * Dipertahankan sementara supaya
+       * record / modul lama yang masih
+       * membaca key ini tidak rusak.
+       */
+      externalDriverIncentive:
+        cost.assignedDriverCost,
+
+      // ===================================================
+      // PETTY CASH
+      // ===================================================
+
+      pettyCashHolder:
+        cost.pettyCashHolder,
+
+      // ===================================================
+      // OPERATIONAL COST
+      // ===================================================
+
+      fuel:
+        manualFuel,
+
+      etoll:
+        manualEtoll,
+
+      // ===================================================
+      // TOTALS
+      // ===================================================
+
+      totals: {
+        allowance:
+          cost.perDiemTotal,
+
+        accommodation:
+          cost.hotelTotal,
+
+        driverCost:
+          cost.driverTotal,
+
+        /*
+         * Legacy compatibility
+         */
+        driverIncentive:
+          cost.driverTotal,
+
+        pettyCash:
+          cost.pettyCashTotal,
 
         fuel:
           manualFuel,
@@ -1063,69 +1049,67 @@ externalDriverIncentive:
         etoll:
           manualEtoll,
 
-        totals: {
-          allowance:
-            cost.perDiemTotal,
+        grandTotal:
+          cost.grandTotal,
+      },
 
-          accommodation:
-            cost.hotelTotal,
+      // ===================================================
+      // NON ACCOUNTABLE
+      //
+      // Tidak membutuhkan settlement receipt.
+      // ===================================================
 
-          driverCost:
-            cost.driverTotal,
+      nonAccountable: {
+        allowance:
+          cost.perDiemTotal,
 
-          pettyCash:
-            cost.pettyCashTotal,
-
-          fuel:
-            manualFuel,
-
-          etoll:
-            manualEtoll,
-
-          grandTotal:
-            cost.grandTotal,
-        },
+        driverCost:
+          cost.driverTotal,
 
         /*
-         * Settlement tidak akan
-         * memperhitungkan tunjangan
-         * dan insentif sebagai biaya aktual.
+         * Legacy compatibility
          */
-        nonAccountable: {
-          allowance:
-            cost.perDiemTotal,
+        driverIncentive:
+          cost.driverTotal,
 
-          driverIncentive:
-            cost.driverTotal,
+        total:
+          cost.perDiemTotal +
+          cost.driverTotal,
+      },
 
-          total:
-            cost.perDiemTotal +
-            cost.driverTotal,
-        },
+      // ===================================================
+      // ACCOUNTABLE
+      //
+      // Harus dipertanggungjawabkan pada settlement.
+      // ===================================================
 
-        accountable: {
-          accommodation:
-            cost.hotelTotal,
+      accountable: {
+        accommodation:
+          cost.hotelTotal,
 
-          pettyCash:
-            cost.pettyCashTotal,
+        pettyCash:
+          cost.pettyCashTotal,
 
-          fuel:
-            manualFuel,
+        fuel:
+          manualFuel,
 
-          etoll:
-            manualEtoll,
+        etoll:
+          manualEtoll,
 
-          total:
-            cost.hotelTotal +
-            cost.pettyCashTotal +
-            manualFuel +
-            manualEtoll,
-        },
+        total:
+          cost.hotelTotal +
+          cost.pettyCashTotal +
+          manualFuel +
+          manualEtoll,
+      },
 
-        extraRows,
-      };
+      // ===================================================
+      // COST CENTER / PT BURDEN
+      // ===================================================
+
+      extraRows,
     };
+  };
 
   /*
    * SAVE DRAFT
