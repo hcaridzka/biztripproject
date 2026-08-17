@@ -14,6 +14,7 @@ import { SettlementReview } from './components/SettlementReview';
 import { SummaryExport } from './components/SummaryExport';
 import { UserManagement } from './components/UserManagement';
 import { FleetManagement } from './components/FleetManagement';
+import { TripManagement } from './components/TripManagement';
 import { PdfPrint } from './components/PdfPrint';
 import { ToastHost } from './components/ui-shared';
 import { AccountSettings } from './components/AccountSettings';
@@ -28,80 +29,23 @@ function Shell() {
 
   useEffect(() => { if (profile) refresh(); }, [profile]);
 
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-sm text-slate-400">Loading...</div></div>;
-  }
-
-  if (!profile) {
-    return (
-      <>
-        <Login />
-        <ToastHost toasts={toasts} onDismiss={dismissToast} />
-      </>
-    );
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-sm text-slate-400">Loading...</div></div>;
+  if (!profile) return <><Login /><ToastHost toasts={toasts} onDismiss={dismissToast} /></>;
 
   const handlePrint = (id: string) => setPrintTrip({ id, mode: 'advance' });
 
   return (
     <>
       <Layout view={view} setView={setView}>
-        {view === 'dashboard' && (
-  <Dashboard
-    setView={setView}
-    setSelectedTrip={setSelectedTrip}
-  />
-)}
-
-{view === 'new-request' && (
-  <RequestForm
-    onDone={() => setView('my-trips')}
-  />
-)}
-
-{view === 'my-trips' && (
-  <MyTrips
-    onPrint={handlePrint}
-    selectedTripId={selectedTrip}
-  />
-)}
-
-{view === 'approval' && (
-  <ApprovalDashboard
-    setSelectedTrip={setSelectedTrip}
-    setView={setView}
-  />
-)}
-
-{view === 'pic-obligo' && (
-  <PicObligo
-    selectedTripId={selectedTrip}
-  />
-)}
-
-{view === 'cost-review' && (
-  <CostCalculation
-    onPrint={handlePrint}
-    selectedTripId={selectedTrip}
-  />
-)}
-
-{view === 'settlement' && (
-  <SettlementForm
-    setSelectedTrip={setSelectedTrip}
-  />
-)}
-
-{view === 'settlement-review' && (
-  <SettlementReview
-    onPrint={(id) =>
-      setPrintTrip({
-        id,
-        mode: 'settlement',
-      })
-    }
-  />
-)}
+        {view === 'dashboard' && <Dashboard setView={setView} setSelectedTrip={setSelectedTrip} />}
+        {view === 'new-request' && <RequestForm onDone={() => setView('my-trips')} />}
+        {view === 'my-trips' && <MyTrips onPrint={handlePrint} selectedTripId={selectedTrip} />}
+        {view === 'approval' && <ApprovalDashboard setSelectedTrip={setSelectedTrip} setView={setView} />}
+        {view === 'pic-obligo' && <PicObligo selectedTripId={selectedTrip} />}
+        {view === 'cost-review' && <CostCalculation onPrint={handlePrint} selectedTripId={selectedTrip} />}
+        {view === 'settlement' && <SettlementForm setSelectedTrip={setSelectedTrip} />}
+        {view === 'settlement-review' && <SettlementReview onPrint={(id) => setPrintTrip({ id, mode: 'settlement' })} />}
+        {view === 'trip-management' && <TripManagement />}
         {view === 'summary' && <SummaryExport />}
         {view === 'user-management' && <UserManagement />}
         {view === 'matrix-management' && <MatrixManagement />}
@@ -109,21 +53,12 @@ function Shell() {
         {view === 'vehicles' && <FleetManagement />}
       </Layout>
 
-      {printTrip && (
-        <PdfPrint tripId={printTrip.id} mode={printTrip.mode} onClose={() => setPrintTrip(null)} />
-      )}
-
+      {printTrip && <PdfPrint tripId={printTrip.id} mode={printTrip.mode} onClose={() => setPrintTrip(null)} />}
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
     </>
   );
 }
 
 export default function App() {
-  return (
-    <AuthProvider>
-      <AppProvider>
-        <Shell />
-      </AppProvider>
-    </AuthProvider>
-  );
+  return <AuthProvider><AppProvider><Shell /></AppProvider></AuthProvider>;
 }
