@@ -924,16 +924,6 @@ const driverTotal =
         sum + participant.total,
       0
     );
-  // =======================================================
-  // TOTAL PARTICIPANTS
-  // =======================================================
-
-  const perDiemTotal =
-    perParticipant.reduce(
-      (sum, participant) =>
-        sum + participant.total,
-      0
-    );
 
   const hotelTotal =
     perParticipant.reduce(
