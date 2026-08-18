@@ -77,10 +77,98 @@ function perDiemForParticipant(participant:Participant,itinerary:ItineraryLeg[],
   return{perDay:Math.round(perDay),total,hotel,driver:0,breakdown,legs};
 }
 
-export function computePettyCash(participants:Participant[],itinerary:ItineraryLeg[],matrix:DynamicMatrixMap=DEFAULT_MATRIX){
-  const tripHeadcount=participants.length;const eligibleRecipients=participants.filter(p=>(p.category??'Internal')!=='Eksternal');const pettyCashEligible=itinerary.some(l=>{const s=legScheme(l,'');return s==='LK'||s==='KP2'||s==='KPO'});
-  if(!pettyCashEligible||tripHeadcount<=1||eligibleRecipients.length===0)return{total:0,holder:null,perPerson:0,trips:0,perPersonBreakdown:[] as {name:string;jabatan:Jabatan;amount:number}[]};
-  const uniqueMovements=new Set(itinerary.map(destinationKey)).size;const trips=uniqueMovements+1;const holder=[...eligibleRecipients].sort((a,b)=>JABATAN_RANK[b.jabatan]-JABATAN_RANK[a.jabatan])[0];const holderMatrix=getGradeMatrix(holder,matrix);const perPersonBreakdown=eligibleRecipients.map(p=>({name:p.name||'(Belum diisi)',jabatan:p.jabatan,amount:getGradeMatrix(p,matrix).pettyCash*trips}));return{total:perPersonBreakdown.reduce((s,p)=>s+p.amount,0),holder:holder.name,perPerson:holderMatrix.pettyCash,trips,perPersonBreakdown};
+export function computePettyCash(
+  participants: Participant[],
+  itinerary: ItineraryLeg[],
+  matrix: DynamicMatrixMap = DEFAULT_MATRIX
+) {
+  const tripHeadcount = participants.length;
+
+  const eligibleRecipients = participants.filter(
+    (p) => (p.category ?? 'Internal') !== 'Eksternal'
+  );
+
+  /**
+   * Pettycash hanya berlaku apabila ada perjalanan ke:
+   * - LK
+   * - KP2
+   * - KPO
+   *
+   * KP1 tidak menjadi dasar pettycash.
+   */
+  const eligibleDestinations = new Map<string, ItineraryLeg>();
+
+  itinerary.forEach((leg) => {
+    const scheme = legScheme(leg, '');
+
+    if (!['LK', 'KP2', 'KPO'].includes(scheme)) return;
+
+    /**
+     * Destination yang sama dalam satu trip hanya dihitung sekali.
+     *
+     * Contoh:
+     * KP1 Pekanbaru
+     * KP2 Kuansing
+     * KP1 Pekanbaru
+     *
+     * Yang eligible hanya KP2 Kuansing.
+     */
+    const key = destinationKey(leg);
+
+    if (!eligibleDestinations.has(key)) {
+      eligibleDestinations.set(key, leg);
+    }
+  });
+
+  if (
+    eligibleDestinations.size === 0 ||
+    tripHeadcount <= 1 ||
+    eligibleRecipients.length === 0
+  ) {
+    return {
+      total: 0,
+      holder: null,
+      perPerson: 0,
+      trips: 0,
+      perPersonBreakdown: [] as {
+        name: string;
+        jabatan: Jabatan;
+        amount: number;
+      }[],
+    };
+  }
+
+  /**
+   * Setiap eligible destination = 2 movement:
+   * 1. menuju lokasi
+   * 2. kembali dari lokasi
+   *
+   * Jadi:
+   * KP1 → KP2 → KP1
+   * = KP2 hanya 1 eligible destination
+   * = 2 movement.
+   */
+  const trips = eligibleDestinations.size * 2;
+
+  const holder = [...eligibleRecipients].sort(
+    (a, b) => JABATAN_RANK[b.jabatan] - JABATAN_RANK[a.jabatan]
+  )[0];
+
+  const holderMatrix = getGradeMatrix(holder, matrix);
+
+  const perPersonBreakdown = eligibleRecipients.map((p) => ({
+    name: p.name || '(Belum diisi)',
+    jabatan: p.jabatan,
+    amount: getGradeMatrix(p, matrix).pettyCash * trips,
+  }));
+
+  return {
+    total: perPersonBreakdown.reduce((sum, p) => sum + p.amount, 0),
+    holder: holder.name,
+    perPerson: holderMatrix.pettyCash,
+    trips,
+    perPersonBreakdown,
+  };
 }
 
 export interface PerParticipant { name:string; grade?:string; jabatan:Jabatan; perDay:number; days:number; total:number; hotel:number; driver:number; pettyCash:number; breakdown:string; legs:LegBreakdown[]; }
