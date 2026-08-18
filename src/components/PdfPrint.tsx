@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Printer, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Button, formatIDR } from './ui-shared';
@@ -13,22 +13,61 @@ function splitMovementName(value: string) {
   return { name: name || '-', component: componentParts.join(' — ') || '-' };
 }
 
+async function urlToDataUrl(url: string): Promise<string> {
+  if (url.startsWith('data:')) return url;
+  const response = await fetch(url, { mode: 'cors', cache: 'no-store' });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const blob = await response.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('Gagal membaca attachment'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function PdfPrint({ tripId, mode, onClose }: { tripId: string | null; mode: 'advance' | 'settlement'; onClose: () => void }) {
   const { trips, disburseRows, settlementClaimRows, settlementReceipts } = useApp();
-  if (!tripId) return null;
-  const trip = trips.find((item) => item.id === tripId);
-  if (!trip) return null;
+  const [embeddedImages, setEmbeddedImages] = useState<Record<string, string>>({});
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
-  const costData: any = trip.cost_data ?? {};
+  const trip = tripId ? trips.find((item) => item.id === tripId) : undefined;
+  const costData: any = trip?.cost_data ?? {};
+  const advanceRows = trip ? disburseRows.filter((row) => row.trip_id === trip.id) : [];
+  const settlementRows = trip ? settlementClaimRows.filter((row) => row.trip_id === trip.id) : [];
+  const receipts = useMemo(() => trip ? settlementReceipts.filter((row) => row.trip_id === trip.id && row.category !== 'Refund Transfer Proof').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '')) : [], [trip, settlementReceipts]);
+
+  useEffect(() => {
+    let active = true;
+    if (mode !== 'settlement') { setEmbeddedImages({}); return; }
+    const imageReceipts = receipts.filter((receipt) => receipt.file_base64 && isImageAttachment(receipt.file_base64, receipt.file_name));
+    if (!imageReceipts.length) { setEmbeddedImages({}); return; }
+    setAttachmentsLoading(true);
+    Promise.all(imageReceipts.map(async (receipt) => {
+      try {
+        const dataUrl = await urlToDataUrl(receipt.file_base64!);
+        return [receipt.id, dataUrl] as const;
+      } catch (error) {
+        console.error('Failed to embed settlement attachment', receipt.id, error);
+        return [receipt.id, receipt.file_base64!] as const;
+      }
+    })).then((pairs) => {
+      if (active) setEmbeddedImages(Object.fromEntries(pairs));
+    }).finally(() => {
+      if (active) setAttachmentsLoading(false);
+    });
+    return () => { active = false; };
+  }, [mode, receipts]);
+
+  if (!tripId || !trip) return null;
+
   const days = daysBetween(trip.departure_date, trip.return_date);
-  const advanceRows = disburseRows.filter((row) => row.trip_id === trip.id);
-  const settlementRows = settlementClaimRows.filter((row) => row.trip_id === trip.id);
-  const receipts = settlementReceipts.filter((row) => row.trip_id === trip.id && row.category !== 'Refund Transfer Proof').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''));
   const participants: any[] = Array.isArray(costData.perParticipant) ? costData.perParticipant : [];
   const advanceTotal = Number(trip.cost_grand_total) || 0;
   const assignedDriverName = costData?.assignedDriverName ?? trip.obligo_driver_name ?? null;
 
   const handlePrint = async () => {
+    if (attachmentsLoading) return;
     const images = Array.from(document.querySelectorAll<HTMLImageElement>('#print-area .attachment-image'));
     await Promise.all(images.map((image) => {
       if (image.complete && image.naturalWidth > 0) return Promise.resolve();
@@ -43,14 +82,14 @@ export function PdfPrint({ tripId, mode, onClose }: { tripId: string | null; mod
   };
 
   return <div className="fixed inset-0 z-50 bg-slate-900/60 overflow-y-auto p-4 md:p-8" onClick={onClose}>
-    <style>{`@page{size:A4;margin:0}@media print{html,body{background:#fff!important}body *{visibility:hidden!important}#print-area,#print-area *{visibility:visible!important}#print-area{position:absolute!important;left:0!important;top:0!important;width:210mm!important;margin:0!important;padding:14mm!important}.no-print{display:none!important}.attachment-page{break-before:page;page-break-before:always;min-height:269mm;display:flex!important;flex-direction:column!important}.attachment-image{display:block!important;width:auto!important;height:auto!important;max-width:600px!important;max-height:600px!important;object-fit:contain!important;margin:18mm auto 0!important}.attachment-pdf{display:block!important;width:100%!important;height:235mm!important;border:0!important}tr{break-inside:avoid;page-break-inside:avoid}}`}</style>
-    <div className="no-print max-w-[210mm] mx-auto mb-3 flex justify-between gap-3" onClick={(e) => e.stopPropagation()}><div className="text-sm font-semibold text-white">{mode === 'advance' ? 'Preview PDF SPD' : 'Preview PDF Settlement'}</div><div className="flex gap-2"><Button size="sm" variant="secondary" icon={<Printer className="w-3.5 h-3.5" />} onClick={handlePrint}>Print / Save PDF</Button><button onClick={onClose} className="p-2 rounded-lg bg-white"><X className="w-4 h-4" /></button></div></div>
+    <style>{`@page{size:A4;margin:0}@media print{html,body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body *{visibility:hidden!important}#print-area,#print-area *{visibility:visible!important}#print-area{position:absolute!important;left:0!important;top:0!important;width:210mm!important;margin:0!important;padding:14mm!important}.no-print{display:none!important}.attachment-page{break-before:page;page-break-before:always;min-height:269mm;display:flex!important;flex-direction:column!important}.attachment-image{display:block!important;width:auto!important;height:auto!important;max-width:600px!important;max-height:600px!important;object-fit:contain!important;margin:18mm auto 0!important}.attachment-pdf{display:block!important;width:100%!important;height:235mm!important;border:0!important}tr{break-inside:avoid;page-break-inside:avoid}}`}</style>
+    <div className="no-print max-w-[210mm] mx-auto mb-3 flex justify-between gap-3" onClick={(e) => e.stopPropagation()}><div className="text-sm font-semibold text-white">{mode === 'advance' ? 'Preview PDF SPD' : 'Preview PDF Settlement'}</div><div className="flex gap-2"><Button size="sm" variant="secondary" icon={<Printer className="w-3.5 h-3.5" />} disabled={attachmentsLoading} onClick={handlePrint}>{attachmentsLoading ? 'Preparing Attachments...' : 'Print / Save PDF'}</Button><button onClick={onClose} className="p-2 rounded-lg bg-white"><X className="w-4 h-4" /></button></div></div>
     <main id="print-area" onClick={(e) => e.stopPropagation()} className="mx-auto bg-white w-full max-w-[210mm] min-h-[297mm] px-[14mm] py-[12mm]">
       <DocumentHeader title={mode === 'advance' ? 'SURAT PERJALANAN DINAS' : 'LAPORAN HASIL & SETTLEMENT PERJALANAN DINAS'} number={mode === 'advance' ? trip.spd_number ?? '-' : trip.settlement_number ?? `Lap ${trip.spd_number ?? '-'}`} />
       <Section title="Informasi Perjalanan"><InfoGrid><Info label="Pemohon" value={trip.requester_name} /><Info label="Jabatan" value={trip.requester_jabatan || '-'} /><Info label="PT Pemohon" value={trip.requester_pt || '-'} /><Info label="Cost Center" value={(trip.company_burden ?? []).join(', ') || '-'} /><Info label="Berangkat" value={formatDate(trip.departure_date)} /><Info label="Pulang" value={formatDate(trip.return_date)} /><Info label="Durasi" value={`${days} hari`} /><Info label="Tujuan" value={trip.purpose || '-'} />{assignedDriverName && <Info label="Driver" value={assignedDriverName} />}</InfoGrid></Section>
       <Section title="Itinerary"><Table headers={['No', 'Tujuan', 'Tanggal', 'Agenda']}>{(trip.itinerary ?? []).map((leg, index) => <tr key={leg.id ?? index}><TD>{index + 1}</TD><TD>{leg.destination}{leg.destination_custom ? ` (${leg.destination_custom})` : ''}</TD><TD>{formatDate(leg.start_date)} - {formatDate(leg.end_date)}</TD><TD>{leg.agenda || '-'}</TD></tr>)}</Table></Section>
       {mode === 'advance' ? <><Section title="A. Rincian Biaya Advance"><Table headers={['Nama', 'Matrix / Komponen', 'Nominal']}>{participants.map((participant, index) => <tr key={index}><TD>{participant.name}</TD><TD>{participant.grade || participant.jabatan || '-'}</TD><TD>{formatIDR((Number(participant.total) || 0) + (Number(participant.hotel) || 0) + (Number(participant.pettyCash) || 0))}</TD></tr>)}<tr className="font-bold"><TD colSpan={2}>GRAND TOTAL ADVANCE</TD><TD>{formatIDR(advanceTotal)}</TD></tr></Table></Section><Section title="B. Alokasi Cost Center"><Table headers={['Nama', 'Komponen', 'Cost Center', 'Nominal']}>{advanceRows.map((row) => <tr key={row.id}><TD>{row.name}</TD><TD>{row.component_note || '-'}</TD><TD>{row.pt_burden || '-'}</TD><TD>{formatIDR(Number(row.nominal) || 0)}</TD></tr>)}</Table></Section></> : <><Section title="A. Laporan Hasil Pekerjaan"><div className="border p-3 text-[11px] whitespace-pre-wrap min-h-[24mm]">{trip.work_result || '-'}</div></Section><Section title="B. Audit Trail Settlement"><Table headers={['No', 'Kategori / Keterangan', 'Claimed', 'Approved', 'Status', 'HR Note']}>{receipts.map((receipt, index) => <tr key={receipt.id}><TD>{index + 1}</TD><TD><div>{receipt.category}</div><div className="text-[9px] text-slate-500">{receipt.description || receipt.file_name || '-'}</div></TD><TD>{formatIDR(Number(receipt.amount) || 0)}</TD><TD>{formatIDR(Number(receipt.hr_approved_amount) || 0)}</TD><TD><strong>{receiptStatusLabel(receipt.hr_status)}</strong></TD><TD>{receipt.hr_note || '-'}</TD></tr>)}{receipts.length === 0 && <tr><TD colSpan={6}>Tidak ada receipt / invoice settlement.</TD></tr>}</Table></Section><Section title="C. Alokasi Refund / Reimbursement"><Table headers={['Penerima / Pengembali', 'Untuk / Komponen', 'Movement', 'Cost Center', 'Nominal']}>{settlementRows.map((row) => { const movement = splitMovementName(row.name); return <tr key={row.id}><TD>{movement.name}</TD><TD>{movement.component}</TD><TD><strong>{row.claim_status}</strong></TD><TD>{row.pt_burden || '-'}</TD><TD>{formatIDR(Number(row.nominal) || 0)}</TD></tr>; })}{settlementRows.length === 0 && <tr><TD colSpan={5}>Tidak ada refund / reimbursement.</TD></tr>}</Table></Section></>}
-      {mode === 'settlement' && receipts.map((receipt, index) => receipt.file_base64 ? <section key={receipt.id} className="attachment-page pt-3"><div className="border-b-2 border-slate-900 pb-3 mb-3"><div className="text-[10px] font-semibold tracking-wide">LAMPIRAN {index + 1}</div><div className="text-sm font-bold mt-1">{receipt.category} — {receipt.file_name || receipt.description || 'Bukti Settlement'}</div><div className="text-[9px] text-slate-500 mt-1">Claimed {formatIDR(Number(receipt.amount) || 0)} · Approved {formatIDR(Number(receipt.hr_approved_amount) || 0)} · {receiptStatusLabel(receipt.hr_status)}</div></div>{isImageAttachment(receipt.file_base64, receipt.file_name) ? <img src={receipt.file_base64} alt={receipt.file_name || receipt.category} className="attachment-image" /> : isPdfAttachment(receipt.file_base64, receipt.file_name) ? <iframe src={receipt.file_base64} title={receipt.file_name || receipt.category} className="attachment-pdf" /> : <div className="m-auto text-xs text-slate-500 text-center">Attachment tidak dapat dirender langsung.<br />{receipt.file_name || receipt.category}</div>}</section> : null)}
+      {mode === 'settlement' && receipts.map((receipt, index) => receipt.file_base64 ? <section key={receipt.id} className="attachment-page pt-3"><div className="border-b-2 border-slate-900 pb-3 mb-3"><div className="text-[10px] font-semibold tracking-wide">LAMPIRAN {index + 1}</div><div className="text-sm font-bold mt-1">{receipt.category} — {receipt.file_name || receipt.description || 'Bukti Settlement'}</div><div className="text-[9px] text-slate-500 mt-1">Claimed {formatIDR(Number(receipt.amount) || 0)} · Approved {formatIDR(Number(receipt.hr_approved_amount) || 0)} · {receiptStatusLabel(receipt.hr_status)}</div></div>{isImageAttachment(receipt.file_base64, receipt.file_name) ? <img src={embeddedImages[receipt.id] || receipt.file_base64} alt={receipt.file_name || receipt.category} className="attachment-image" /> : isPdfAttachment(receipt.file_base64, receipt.file_name) ? <iframe src={receipt.file_base64} title={receipt.file_name || receipt.category} className="attachment-pdf" /> : <div className="m-auto text-xs text-slate-500 text-center">Attachment tidak dapat dirender langsung.<br />{receipt.file_name || receipt.category}</div>}</section> : null)}
     </main>
   </div>;
 }
