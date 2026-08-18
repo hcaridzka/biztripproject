@@ -30,20 +30,117 @@ export function SettlementReview({ onPrint }: { onPrint:(id:string)=>void }) {
     const desc=norm(row.description); const candidates=advanceRows(t).filter(a=>componentMatch(a.component_note||'',row.category));
     const byName=candidates.find(a=>desc.includes(norm(a.name))); return byName?.name || (candidates.length===1?candidates[0].name:t.requester_name);
   };
-  const details=useMemo<DetailRow[]>(()=>{if(!selected)return[]; const adv=advanceRows(selected).filter(a=>['bbm','etoll','pettycash','akomodasi'].some(c=>componentMatch(a.component_note||'',c)));
-    const keys=new Map<string,{holder:string;component:string;advance:number;claimed:number;approved:number;pt:string}>();
-    adv.forEach(a=>{const component=['BBM','E-Toll','Pettycash','Akomodasi'].find(c=>componentMatch(a.component_note||'',c))||a.component_note; const key=`${a.name}::${component}`; const old=keys.get(key); keys.set(key,{holder:a.name,component,advance:(old?.advance||0)+Number(a.nominal||0),claimed:old?.claimed||0,approved:old?.approved||0,pt:a.pt_burden||defaultPT(selected)})});
-    reviewRows.forEach(r=>{const holder=holderForReceipt(selected,r); const component=r.category; const key=`${holder}::${component}`; const old=keys.get(key); keys.set(key,{holder,component,advance:old?.advance||0,claimed:(old?.claimed||0)+r.claimed,approved:(old?.approved||0)+r.approved,pt:old?.pt||defaultPT(selected)})});
-    return [...keys.values()].map(x=>{const difference=x.approved-x.advance;return {...x,difference,direction:difference>0?'Reimburse':difference<0?'Refund':'Settled'} as DetailRow});
-  },[selected,reviewRows,disburseRows]);
-  const movementTotal=details.reduce((s,d)=>s+Math.abs(d.difference),0); const claimedActual=reviewRows.reduce((s,r)=>s+r.claimed,0); const approvedActual=reviewRows.reduce((s,r)=>s+r.approved,0); const advanceAccountable=Number(selected?.cost_data?.accountable?.total)||0; const advanceTotal=Number(selected?.cost_grand_total)||0; const nonAccountable=Number(selected?.cost_data?.nonAccountable?.total)||0;
-  const reimbursementTotal=details.filter(d=>d.direction==='Reimburse').reduce((s,d)=>s+d.difference,0); const refundTotal=details.filter(d=>d.direction==='Refund').reduce((s,d)=>s+Math.abs(d.difference),0); const net=reimbursementTotal-refundTotal;
-  const expectedMovementTotal=Math.abs(net); const costTotal=costRows.reduce((s,r)=>s+Number(r.nominal||0),0); const costDifference=costTotal-expectedMovementTotal; const allReviewed=reviewRows.length===0||reviewRows.every(r=>r.status!=='pending');
+  const details = useMemo<DetailRow[]>(() => {
+  if (!selected) return [];
 
-  const buildMovementRows=(t:BizTrip):MovementRow[]=>{
-    const netByHolder=new Map<string,{name:string;amount:number;pt:string;components:string[]}>(); details.forEach(d=>{if(!d.difference)return; const key=d.holder; const old=netByHolder.get(key)||{name:d.holder,amount:0,pt:d.pt||defaultPT(t),components:[]}; old.amount+=d.difference; old.components.push(`${d.component} ${d.difference>0?'+':'-'}${formatIDR(Math.abs(d.difference))}`); netByHolder.set(key,old)});
-    return [...netByHolder.values()].filter(x=>x.amount!==0).map(x=>({id:crypto.randomUUID(),name:x.name,component:x.components.join(' · '),nominal:Math.abs(x.amount),direction:x.amount>0?'Reimburse':'Refund',ptBurden:x.pt}));
-  };
+  const accountableComponents = advanceRows(selected)
+    .filter((row) => Number(row.nominal || 0) > 0)
+    .filter((row) =>
+      ['bbm', 'etoll', 'pettycash', 'akomodasi'].some((component) =>
+        componentMatch(row.component_note || '', component)
+      )
+    );
+
+  const rows = new Map<
+    string,
+    {
+      holder: string;
+      component: string;
+      advance: number;
+      claimed: number;
+      approved: number;
+      pt: string;
+    }
+  >();
+
+  accountableComponents.forEach((row) => {
+    const component =
+      ['BBM', 'E-Toll', 'Pettycash', 'Akomodasi'].find((componentName) =>
+        componentMatch(row.component_note || '', componentName)
+      ) || row.component_note;
+
+    const key = `${row.name}::${component}`;
+    const old = rows.get(key);
+
+    rows.set(key, {
+      holder: row.name,
+      component,
+      advance: (old?.advance || 0) + Number(row.nominal || 0),
+      claimed: old?.claimed || 0,
+      approved: old?.approved || 0,
+      pt: row.pt_burden || defaultPT(selected),
+    });
+  });
+
+  return [...rows.values()].map((row) => ({
+    ...row,
+    difference: 0,
+    direction: 'Settled',
+  })) as DetailRow[];
+}, [selected, disburseRows]);
+
+const claimedActual = reviewRows.reduce(
+  (sum, row) => sum + Number(row.claimed || 0),
+  0
+);
+
+const approvedActual = reviewRows.reduce(
+  (sum, row) => sum + Number(row.approved || 0),
+  0
+);
+
+const advanceAccountable =
+  Number(selected?.cost_data?.accountable?.total) || 0;
+
+const advanceTotal =
+  Number(selected?.cost_grand_total) || 0;
+
+const nonAccountable =
+  Number(selected?.cost_data?.nonAccountable?.total) || 0;
+
+/**
+ * Settlement net dihitung GLOBAL,
+ * bukan refund/reimburse per komponen.
+ *
+ * Positive  = Reimbursement
+ * Negative  = Refund
+ * Zero      = Settled
+ */
+const net = approvedActual - advanceAccountable;
+
+const reimbursementTotal = net > 0 ? net : 0;
+const refundTotal = net < 0 ? Math.abs(net) : 0;
+
+const expectedMovementTotal = Math.abs(net);
+
+const costTotal = costRows.reduce(
+  (sum, row) => sum + Number(row.nominal || 0),
+  0
+);
+
+const costDifference = costTotal - expectedMovementTotal;
+
+const allReviewed =
+  reviewRows.length === 0 ||
+  reviewRows.every((row) => row.status !== 'pending');
+
+  const buildMovementRows = (t: BizTrip): MovementRow[] => {
+  if (net === 0) return [];
+
+  return [
+    {
+      id: crypto.randomUUID(),
+      name: t.requester_name,
+      component:
+        net > 0
+          ? 'Net Settlement Reimbursement'
+          : 'Net Settlement Refund',
+      nominal: Math.abs(net),
+      direction: net > 0 ? 'Reimburse' : 'Refund',
+      ptBurden: defaultPT(t),
+    },
+  ];
+};
   const startReview=(t:BizTrip)=>{setSelected(t);setSettleNote(t.settlement_note??''); if(t.status==='Pending Refund Verification'||t.status==='Pending HR Finance Process'){setReviewRows([]);setCostRows(settlementClaimRows.filter(r=>r.trip_id===t.id).map(r=>({id:r.id,name:r.name,component:r.name,nominal:Number(r.nominal)||0,direction:r.claim_status,ptBurden:r.pt_burden})));return;} const rows=receipts(t.id).map(r=>({id:r.id,receiptId:r.id,category:r.category,description:r.description||'',claimed:Number(r.amount)||0,approved:r.hr_approved_amount!=null?Number(r.hr_approved_amount):Number(r.amount)||0,status:(r.hr_status as ReceiptReviewStatus)||'pending',note:r.hr_note||'',fileUrl:r.file_base64||null})); setReviewRows(rows); const existing=settlementClaimRows.filter(r=>r.trip_id===t.id); setCostRows(existing.length?existing.map(r=>({id:r.id,name:r.name,component:r.name,nominal:Number(r.nominal)||0,direction:r.claim_status,ptBurden:r.pt_burden})):[])};
   const updateReview=(id:string,p:Partial<ReviewRow>)=>setReviewRows(rs=>rs.map(r=>r.id===id?{...r,...p}:r)); const updateStatus=(r:ReviewRow,s:ReceiptReviewStatus)=>updateReview(r.id,{status:s,approved:s==='approved'?r.claimed:s==='rejected'?0:r.approved});
   const autoFill=()=>{if(selected)setCostRows(buildMovementRows(selected))}; const updateCost=(id:string,p:Partial<MovementRow>)=>setCostRows(rs=>rs.map(r=>r.id===id?{...r,...p}:r));
