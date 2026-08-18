@@ -203,8 +203,6 @@ function legRate(
     scheme: 'LK',
   };
 }
-  if(scheme==='KP1')return{rate:grade.kp1,scheme:'KP1'}; if(scheme==='KP2')return{rate:grade.kp2,scheme:'KP2'}; if(scheme==='KPO')return{rate:grade.kpo,scheme:'KPO'}; return{rate:grade.luarKota,scheme:'LK'};
-}
 
 export interface LegBreakdown { legIndex:number; destination:string; days:number; scheme:string; rate:number; amount:number; }
 function perDiemForParticipant(
