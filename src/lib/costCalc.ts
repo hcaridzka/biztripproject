@@ -105,6 +105,9 @@ function legRate(
   const isGM =
     key === 'GM';
 
+  const isDriver =
+  participant.jabatan === 'Driver';
+
   /**
    * DALAM KOTA
    *
@@ -141,7 +144,30 @@ function legRate(
       scheme: `DK ${tier}KM`,
     };
   }
+  
+/**
+ * DRIVER
+ *
+ * Driver di-assign oleh PIC Obligo dan menjadi
+ * participant calculation.
+ *
+ * KP1 tidak mendapatkan tunjangan.
+ * DK / KP2 / KPO / LK = Rp100.000 per hari.
+ * Insentif jarak dihitung terpisah.
+ */
+if (isDriver) {
+  if (scheme === 'KP1') {
+    return {
+      rate: 0,
+      scheme: 'KP1',
+    };
+  }
 
+  return {
+    rate: 100000,
+    scheme,
+  };
+}
   /**
    * GENERAL MANAGER
    *
