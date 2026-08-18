@@ -1,4 +1,8 @@
-import { useMemo, useState } from 'react';
+import {
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   AlertCircle,
   Check,
@@ -1441,7 +1445,7 @@ function SummaryBox({
 function TH({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <th className="border px-2 py-2 text-left">
@@ -1454,7 +1458,7 @@ function TD({
   children,
   colSpan,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   colSpan?: number;
 }) {
   return (
