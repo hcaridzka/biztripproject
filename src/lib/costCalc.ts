@@ -28,12 +28,28 @@ export function gradeKey(jabatan:Jabatan):string {
   return 'Staff';
 }
 
-export function participantGradeKey(participant:Participant, matrix:DynamicMatrixMap=DEFAULT_MATRIX):string {
-  const explicit=participant.grade?.trim();
-  if(explicit && matrix[explicit]) return explicit;
-  const legacy=gradeKey(participant.jabatan);
-  if(matrix[legacy]) return legacy;
-  return Object.keys(matrix)[0] || legacy;
+export function participantGradeKey(
+  participant: Participant,
+  matrix: DynamicMatrixMap = DEFAULT_MATRIX
+): string {
+  /**
+   * Jabatan adalah single source of truth.
+   *
+   * participant.grade hanya dipertahankan untuk
+   * backward compatibility data lama, tetapi tidak
+   * boleh menentukan benefit matrix.
+   */
+  const key = gradeKey(participant.jabatan);
+
+  if (matrix[key]) {
+    return key;
+  }
+
+  if (DEFAULT_MATRIX[key]) {
+    return key;
+  }
+
+  return 'Staff';
 }
 
 export function getGradeMatrix(participantOrJabatan:Participant|Jabatan,matrix:DynamicMatrixMap=DEFAULT_MATRIX):GradeMatrix {
@@ -59,22 +75,287 @@ function aggregateItinerary(itinerary:ItineraryLeg[],origin:string):AggregatedLe
   return [...groups.values()].sort((a,b)=>a.firstIndex-b.firstIndex);
 }
 
-function legRate(participant:Participant,leg:ItineraryLeg,origin:string,matrix:DynamicMatrixMap=DEFAULT_MATRIX,dkMatrix:DynamicDKMatrixMap=DEFAULT_DK_MATRIX):{rate:number;scheme:string} {
-  const key=participantGradeKey(participant,matrix); const scheme=legScheme(leg,origin); const grade=matrix[key]??getGradeMatrix(participant,matrix);
-  if(scheme==='DK'){let tier:DKTier=leg.dkTier??'25';if(origin!=='Head Office BSD'&&tier==='25')tier='50';const dkKey=participant.jabatan==='General Manager'?'Head/TL':key;const currentDK=dkMatrix[dkKey]??DEFAULT_DK_MATRIX[participant.jabatan==='General Manager'?'Head/TL':gradeKey(participant.jabatan)]??DEFAULT_DK_MATRIX.Staff;return{rate:currentDK[tier]??0,scheme:`DK ${tier}KM`};}
-  if(participant.jabatan==='General Manager'){
-    if(scheme==='KP1'||scheme==='KP2'||scheme==='KPO') return {rate:100000,scheme};
-    const headMatrix=matrix['Head/TL']??DEFAULT_MATRIX['Head/TL']; return {rate:headMatrix.luarKota,scheme:'LK'};
+function legRate(
+  participant: Participant,
+  leg: ItineraryLeg,
+  origin: string,
+  matrix: DynamicMatrixMap = DEFAULT_MATRIX,
+  dkMatrix: DynamicDKMatrixMap = DEFAULT_DK_MATRIX
+): {
+  rate: number;
+  scheme: string;
+} {
+  const key = participantGradeKey(
+    participant,
+    matrix
+  );
+
+  const scheme = legScheme(
+    leg,
+    origin
+  );
+
+  const grade =
+    matrix[key] ??
+    getGradeMatrix(
+      participant,
+      matrix
+    );
+
+  const isGM =
+    key === 'GM';
+
+  /**
+   * DALAM KOTA
+   *
+   * GM mengikuti matrix Head/TL.
+   */
+  if (scheme === 'DK') {
+    let tier: DKTier =
+      leg.dkTier ?? '25';
+
+    if (
+      origin !==
+        'Head Office BSD' &&
+      tier === '25'
+    ) {
+      tier = '50';
+    }
+
+    const dkKey =
+      isGM
+        ? 'Head/TL'
+        : key;
+
+    const currentDK =
+      dkMatrix[dkKey] ??
+      DEFAULT_DK_MATRIX[
+        dkKey
+      ] ??
+      DEFAULT_DK_MATRIX.Staff;
+
+    return {
+      rate:
+        currentDK[tier] ??
+        0,
+      scheme: `DK ${tier}KM`,
+    };
   }
+
+  /**
+   * GENERAL MANAGER
+   *
+   * KP1 / KP2 / KPO:
+   * Rp100.000 flat per unique destination.
+   *
+   * LK:
+   * mengikuti rate Head/TL.
+   */
+  if (isGM) {
+    if (
+      scheme === 'KP1' ||
+      scheme === 'KP2' ||
+      scheme === 'KPO'
+    ) {
+      return {
+        rate: 100000,
+        scheme,
+      };
+    }
+
+    const headMatrix =
+      matrix['Head/TL'] ??
+      DEFAULT_MATRIX[
+        'Head/TL'
+      ];
+
+    return {
+      rate:
+        headMatrix.luarKota,
+      scheme: 'LK',
+    };
+  }
+
+  if (scheme === 'KP1') {
+    return {
+      rate: grade.kp1,
+      scheme: 'KP1',
+    };
+  }
+
+  if (scheme === 'KP2') {
+    return {
+      rate: grade.kp2,
+      scheme: 'KP2',
+    };
+  }
+
+  if (scheme === 'KPO') {
+    return {
+      rate: grade.kpo,
+      scheme: 'KPO',
+    };
+  }
+
+  return {
+    rate:
+      grade.luarKota,
+    scheme: 'LK',
+  };
+}
   if(scheme==='KP1')return{rate:grade.kp1,scheme:'KP1'}; if(scheme==='KP2')return{rate:grade.kp2,scheme:'KP2'}; if(scheme==='KPO')return{rate:grade.kpo,scheme:'KPO'}; return{rate:grade.luarKota,scheme:'LK'};
 }
 
 export interface LegBreakdown { legIndex:number; destination:string; days:number; scheme:string; rate:number; amount:number; }
-function perDiemForParticipant(participant:Participant,itinerary:ItineraryLeg[],origin:string,matrix:DynamicMatrixMap=DEFAULT_MATRIX,dkMatrix:DynamicDKMatrixMap=DEFAULT_DK_MATRIX){
-  const grade=getGradeMatrix(participant,matrix); const legs:LegBreakdown[]=[]; let total=0; let hotelDays=0; const aggregated=aggregateItinerary(itinerary,origin);
-  aggregated.forEach(group=>{const{rate,scheme}=legRate(participant,group.sourceLeg,origin,matrix,dkMatrix);const isGMFlat=participant.jabatan==='General Manager'&&(group.scheme==='KP1'||group.scheme==='KP2'||group.scheme==='KPO');const amount=isGMFlat?rate:rate*group.days;total+=amount;if(group.scheme!=='DK'&&group.days>0)hotelDays+=group.days;legs.push({legIndex:group.firstIndex,destination:group.destination,days:group.days,scheme,rate,amount});});
-  const tripDays=aggregated.reduce((s,l)=>s+l.days,0);const hotel=grade.hotel*hotelDays;const perDay=total/Math.max(1,tripDays);const breakdown=legs.map(l=>`${l.scheme} ${formatIDR(l.rate)}${participant.jabatan==='General Manager'&&['KP1','KP2','KPO'].includes(l.scheme)?' flat':`×${l.days}d`}`).join(' + ');
-  return{perDay:Math.round(perDay),total,hotel,driver:0,breakdown,legs};
+function perDiemForParticipant(
+  participant: Participant,
+  itinerary: ItineraryLeg[],
+  origin: string,
+  matrix: DynamicMatrixMap = DEFAULT_MATRIX,
+  dkMatrix: DynamicDKMatrixMap = DEFAULT_DK_MATRIX
+) {
+  const grade =
+    getGradeMatrix(
+      participant,
+      matrix
+    );
+
+  const key =
+    participantGradeKey(
+      participant,
+      matrix
+    );
+
+  const isGM =
+    key === 'GM';
+
+  const legs: LegBreakdown[] =
+    [];
+
+  let total = 0;
+  let hotelDays = 0;
+
+  const aggregated =
+    aggregateItinerary(
+      itinerary,
+      origin
+    );
+
+  aggregated.forEach(
+    (group) => {
+      const {
+        rate,
+        scheme,
+      } = legRate(
+        participant,
+        group.sourceLeg,
+        origin,
+        matrix,
+        dkMatrix
+      );
+
+      /**
+       * GM flat hanya untuk KP.
+       *
+       * Karena itinerary sudah di-aggregate
+       * berdasarkan destination,
+       * destination yang sama tidak dihitung
+       * sebagai trip baru.
+       */
+      const isGMFlat =
+        isGM &&
+        (
+          group.scheme ===
+            'KP1' ||
+          group.scheme ===
+            'KP2' ||
+          group.scheme ===
+            'KPO'
+        );
+
+      const amount =
+        isGMFlat
+          ? rate
+          : rate *
+            group.days;
+
+      total += amount;
+
+      if (
+        group.scheme !==
+          'DK' &&
+        group.days > 0
+      ) {
+        hotelDays +=
+          group.days;
+      }
+
+      legs.push({
+        legIndex:
+          group.firstIndex,
+        destination:
+          group.destination,
+        days:
+          group.days,
+        scheme,
+        rate,
+        amount,
+      });
+    }
+  );
+
+  const tripDays =
+    aggregated.reduce(
+      (sum, leg) =>
+        sum + leg.days,
+      0
+    );
+
+  const hotel =
+    grade.hotel *
+    hotelDays;
+
+  const perDay =
+    total /
+    Math.max(
+      1,
+      tripDays
+    );
+
+  const breakdown =
+    legs
+      .map((leg) => {
+        const flat =
+          isGM &&
+          [
+            'KP1',
+            'KP2',
+            'KPO',
+          ].includes(
+            leg.scheme
+          );
+
+        return `${leg.scheme} ${formatIDR(
+          leg.rate
+        )}${
+          flat
+            ? ' flat'
+            : `×${leg.days}d`
+        }`;
+      })
+      .join(' + ');
+
+  return {
+    perDay:
+      Math.round(
+        perDay
+      ),
+    total,
+    hotel,
+    driver: 0,
+    breakdown,
+    legs,
+  };
 }
 
 export function computePettyCash(
