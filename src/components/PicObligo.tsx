@@ -183,7 +183,6 @@ export function PicObligo({ selectedTripId }: { selectedTripId?: string | null }
       {selected && (() => {
         const needsVehicle = selected.requires_vehicle === true || selected.needs_vehicle === true;
         const needsDriver = selected.requires_driver === true || selected.needs_driver === true;
-        const requesterIsDriver = selected.requester_jabatan === 'Driver';
 
         return (
           <Card className="p-6 space-y-5 ring-2 ring-sky-500">
@@ -238,28 +237,38 @@ export function PicObligo({ selectedTripId }: { selectedTripId?: string | null }
             )}
 
             {needsDriver && (
-              <div className="space-y-4">
-                <div className="text-xs font-bold text-slate-700 uppercase tracking-wide">Driver</div>
-                {requesterIsDriver && (
-                  <button
-                    type="button"
-                    onClick={() => setDriverName(selected.requester_name)}
-                    className="w-full text-left rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800 hover:bg-emerald-100 transition"
-                  >
-                    <strong>Gunakan Pemohon sebagai Driver</strong>
-                    <div className="mt-1">{selected.requester_name} terdaftar sebagai Driver. Pilih opsi ini bila pemohon mengemudikan kendaraan pada perjalanan ini.</div>
-                  </button>
-                )}
-                <Field label="Driver" hint="Pilih driver yang akan ditugaskan" required>
-                  <Select value={driverName} onChange={(e) => setDriverName(e.target.value)}>
-                    <option value="">Pilih driver...</option>
-                    {requesterIsDriver && <option value={selected.requester_name}>{selected.requester_name} — Pemohon / Driver</option>}
-                    {drivers.filter((d) => d.name !== selected.requester_name).map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                  </Select>
-                  <Input className="mt-2" value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Atau ketik nama driver manual" />
-                </Field>
-              </div>
-            )}
+  <div className="space-y-4">
+    <div className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+      Driver
+    </div>
+
+    <Field
+      label="Driver"
+      hint="Pilih driver yang akan ditugaskan"
+      required
+    >
+      <Select
+        value={driverName}
+        onChange={(e) => setDriverName(e.target.value)}
+      >
+        <option value="">Pilih driver...</option>
+
+        {drivers.map((d) => (
+          <option key={d.id} value={d.name}>
+            {d.name}
+          </option>
+        ))}
+      </Select>
+
+      <Input
+        className="mt-2"
+        value={driverName}
+        onChange={(e) => setDriverName(e.target.value)}
+        placeholder="Atau ketik nama driver manual"
+      />
+    </Field>
+  </div>
+)}
 
             <div className="space-y-4">
               <div className="text-xs font-bold text-slate-700 uppercase tracking-wide">Biaya Operasional</div>
