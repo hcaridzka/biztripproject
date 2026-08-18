@@ -155,7 +155,67 @@ const allReviewed =
   isFinanceProcess?<Card className="p-6 space-y-4"><h3 className="font-bold">HR Process to Finance</h3><p className="text-sm">Reimbursement sudah disetujui seluruh Direksi Cost Center.</p>{costRows.map(r=><div key={r.id} className="p-3 bg-slate-50 rounded-xl text-sm flex justify-between"><span>{r.name} · {r.ptBurden}</span><strong>{formatIDR(r.nominal)}</strong></div>)}<Field label="HR Notes"><Textarea value={settleNote} onChange={e=>setSettleNote(e.target.value)}/></Field><div className="flex justify-end"><Button disabled={saving} onClick={completeFinance}>Process to Finance & Complete</Button></div></Card>:
   isRefundVerification?<Card className="p-6 space-y-4"><h3 className="font-bold">Refund Verification</h3><SummaryBox label="Refund" value={refundAmount}/>{proof?.file_base64&&<a href={proof.file_base64} target="_blank" rel="noreferrer" className="text-brand-600 text-sm flex gap-1"><ExternalLink className="w-4 h-4"/>Lihat Bukti</a>}<Button disabled={!proof||saving} onClick={verifyRefund}>Verify & Complete</Button></Card>:
   <><Card className="p-6 space-y-4"><div className="flex justify-between"><div><h3 className="font-bold">Settlement — {selected.requester_name}</h3><p className="text-xs text-slate-500">{selected.purpose}</p></div><button onClick={()=>setSelected(null)}>Tutup</button></div><div className="grid md:grid-cols-4 gap-3"><SummaryBox label="Grand Advance" value={advanceTotal}/><SummaryBox label="Non-Accountable" value={nonAccountable}/><SummaryBox label="Advance Accountable" value={advanceAccountable}/><SummaryBox label="Actual Approved" value={approvedActual}/></div>
-  <div className="overflow-x-auto"><h4 className="text-sm font-bold mb-2">Summary per Pemegang & Komponen</h4><table className="w-full text-xs border-collapse"><thead><tr className="bg-slate-50"><TH>Pemegang</TH><TH>Komponen</TH><TH>Advance</TH><TH>Claimed</TH><TH>Approved</TH><TH>Selisih</TH><TH>Arah</TH></tr></thead><tbody>{details.map((d,i)=><tr key={`${d.holder}-${d.component}-${i}`}><TD>{d.holder}</TD><TD>{d.component}</TD><TD>{formatIDR(d.advance)}</TD><TD>{formatIDR(d.claimed)}</TD><TD>{formatIDR(d.approved)}</TD><TD>{formatIDR(Math.abs(d.difference))}</TD><TD><strong>{d.direction}</strong></TD></tr>)}</tbody></table></div><div className="grid md:grid-cols-3 gap-3"><SummaryBox label="Total Reimbursement" value={reimbursementTotal}/><SummaryBox label="Total Refund" value={refundTotal}/><SummaryBox label={net>=0?'Net Reimbursement':'Net Refund'} value={Math.abs(net)}/></div></Card>
+  <div className="overflow-x-auto">
+  <h4 className="text-sm font-bold mb-2">
+    Summary Advance Accountable
+  </h4>
+
+  <table className="w-full text-xs border-collapse">
+    <thead>
+      <tr className="bg-slate-50">
+        <TH>Pemegang</TH>
+        <TH>Komponen</TH>
+        <TH>Nominal Advance</TH>
+      </tr>
+    </thead>
+
+    <tbody>
+      {details.length === 0 ? (
+        <tr>
+          <TD colSpan={3}>
+            Tidak ada komponen accountable advance.
+          </TD>
+        </tr>
+      ) : (
+        details.map((detail, index) => (
+          <tr key={`${detail.holder}-${detail.component}-${index}`}>
+            <TD>{detail.holder}</TD>
+            <TD>{detail.component}</TD>
+            <TD>{formatIDR(detail.advance)}</TD>
+          </tr>
+        ))
+      )}
+    </tbody>
+  </table>
+</div>
+<Card className="p-4">
+  <h4 className="text-sm font-bold mb-3">
+    Ringkasan Settlement
+  </h4>
+
+  <div className="grid md:grid-cols-3 gap-3">
+    <SummaryBox
+      label="Advance Accountable"
+      value={advanceAccountable}
+    />
+
+    <SummaryBox
+      label="Actual Approved"
+      value={approvedActual}
+    />
+
+    <SummaryBox
+      label={
+        net > 0
+          ? 'Net Reimbursement'
+          : net < 0
+            ? 'Net Refund'
+            : 'Net Settlement'
+      }
+      value={Math.abs(net)}
+    />
+  </div>
+</Card>
   <Card className="p-6 space-y-3"><h3 className="font-bold">A. Review Receipt Aktual</h3>{reviewRows.map(r=><div key={r.id} className="p-3 border rounded-xl grid md:grid-cols-5 gap-2"><div><strong>{r.category}</strong><div className="text-[11px] text-slate-500">{r.description}</div></div><Input value={formatIDR(r.claimed)} disabled/><Input type="number" value={r.approved} onChange={e=>updateReview(r.id,{approved:Number(e.target.value)||0})}/><Select value={r.status} onChange={e=>updateStatus(r,e.target.value as ReceiptReviewStatus)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="partial">Partial</option><option value="rejected">Rejected</option></Select>{r.fileUrl?<a href={r.fileUrl} target="_blank" rel="noreferrer" className="text-brand-600">Lihat Bukti</a>:<span/>}</div>)}</Card>
   <Card className="p-6 space-y-4"><div className="flex justify-between flex-wrap gap-2"><div><h3 className="font-bold">B. Refund / Reimbursement Allocation</h3><p className="text-xs text-slate-500">Hanya selisih uang yang benar-benar bergerak. HR dapat menentukan penerima/pengembali dan Cost Center secara manual.</p></div><div className="flex gap-2"><Button variant="secondary" size="sm" onClick={autoFill}>Auto-Fill Movement</Button><Button variant="secondary" size="sm" icon={<Plus className="w-3 h-3"/>} onClick={()=>setCostRows(rs=>[...rs,{id:crypto.randomUUID(),name:selected.requester_name,component:'',nominal:0,direction:net>=0?'Reimburse':'Refund',ptBurden:defaultPT(selected)}])}>Add Row</Button></div></div>{costRows.map(r=><div key={r.id} className="grid md:grid-cols-6 gap-2"><Input value={r.name} onChange={e=>updateCost(r.id,{name:e.target.value})}/><Input value={r.component} onChange={e=>updateCost(r.id,{component:e.target.value})}/><Select value={r.direction} onChange={e=>updateCost(r.id,{direction:e.target.value as any})}><option>Reimburse</option><option>Refund</option></Select><Input type="number" value={r.nominal} onChange={e=>updateCost(r.id,{nominal:Number(e.target.value)||0})}/><Select value={r.ptBurden} onChange={e=>updateCost(r.id,{ptBurden:e.target.value})}>{ptOptions(r.ptBurden).map(p=><option key={p}>{p}</option>)}</Select><button onClick={()=>setCostRows(rs=>rs.filter(x=>x.id!==r.id))}><Trash2 className="w-4 h-4 text-rose-500"/></button></div>)}<div className="grid md:grid-cols-3 gap-3"><SummaryBox label="Table B" value={costTotal}/><SummaryBox label="Expected Net Movement" value={expectedMovementTotal}/><SummaryBox label="Selisih" value={costDifference}/></div>{Math.abs(costDifference)>.01&&<div className="text-xs text-rose-600 flex gap-2"><AlertCircle className="w-4 h-4"/>Table B harus sama dengan net refund/reimbursement.</div>}<Field label="HR Settlement Notes"><Textarea value={settleNote} onChange={e=>setSettleNote(e.target.value)}/></Field><div className="flex justify-between"><Button variant="secondary" icon={<FileText className="w-3 h-3"/>} onClick={()=>onPrint(selected.id)}>Cetak PDF Settlement</Button><Button disabled={saving||!allReviewed||Math.abs(costDifference)>.01} icon={<Check className="w-3 h-3"/>} onClick={finalize}>Approve Settlement</Button></div></Card></>}
   </div>;
