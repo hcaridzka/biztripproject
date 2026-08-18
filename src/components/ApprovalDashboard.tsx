@@ -10,7 +10,16 @@ import type { ViewKey } from './Layout';
 
 export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTrip: (id: string) => void; setView: (v: ViewKey) => void }) {
   const { profile } = useAuth();
-  const { trips, updateTrip, deleteTrip, showToast, refresh, activePTMaster, settlementClaimRows } = useApp();
+  const {
+  trips,
+  updateTrip,
+  deleteTrip,
+  showToast,
+  refresh,
+  activePTMaster,
+  settlementClaimRows,
+  tracking,
+} = useApp();
   const [ptFilter, setPtFilter] = useState('');
   const [rejectTrip, setRejectTrip] = useState<BizTrip | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -90,7 +99,219 @@ export function ApprovalDashboard({ setSelectedTrip, setView }: { setSelectedTri
     <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600"><CheckSquare className="w-5 h-5" /></div><div><h2 className="text-xl font-bold text-slate-900">Approval Queue</h2><p className="text-sm text-slate-500">{role} · {queue.length} pengajuan menunggu</p></div></div>
     {ptFilterOptions.length > 0 && <Card className="p-4"><div className="flex items-center gap-3 flex-wrap"><div className="flex items-center gap-2 text-sm font-semibold text-slate-700"><Filter className="w-4 h-4 text-brand-600" />Pilih PT:</div><button onClick={() => setPtFilter('')} className={cn('px-3 py-1.5 rounded-xl text-xs font-semibold ring-1', !ptFilter ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white ring-slate-200')}>Semua PT</button>{ptFilterOptions.map((pt) => <button key={pt} onClick={() => setPtFilter(pt)} className={cn('px-3 py-1.5 rounded-xl text-xs font-semibold ring-1', ptFilter === pt ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white ring-slate-200')}>{pt}</button>)}</div></Card>}
     {queue.length === 0 ? <EmptyState icon={<CheckSquare className="w-6 h-6" />} title="Tidak ada approval menunggu" /> : <div className="space-y-3">{queue.map((t) => <Card key={t.id} className="p-5"><div className="flex flex-col md:flex-row md:items-center gap-4"><div className="flex-1 cursor-pointer" onClick={() => setSelected(t)}><div className="flex gap-2 flex-wrap"><strong>{t.requester_name}</strong><StatusBadge status={t.status} /></div><div className="text-xs text-slate-500 mt-1">{t.requester_pt || '-'} · {formatDate(t.departure_date)} s.d. {formatDate(t.return_date)}</div><div className="text-sm mt-1">{t.purpose}</div><div className="text-xs font-semibold text-slate-600 mt-1">Rute: {routeText(t) || '-'}</div><div className="text-[11px] text-slate-500 mt-1">Cost Center: {(t.status === 'Pending Reimbursement Approval' ? reimbursementPT(t) : t.company_burden ?? []).join(', ') || '-'} · Pending: {pendingBurdenPT(t).join(', ') || '-'}</div></div><div className="flex gap-2 flex-wrap"><Button size="sm" variant="secondary" onClick={() => setSelected(t)}>Detail</Button>{renderPrimaryAction(t)}<Button size="sm" variant="danger" icon={<X className="w-3.5 h-3.5" />} onClick={() => { setRejectTrip(t); setRejectReason(''); }}>Reject</Button>{isSuperAdmin && <button onClick={() => handleDelete(t.id)} className="p-2 text-rose-400"><Trash2 className="w-4 h-4" /></button>}</div></div></Card>)}</div>}
-    <Modal open={!!selected} onClose={() => setSelected(null)} title="Detail Pengajuan">{selected && <div className="space-y-4"><div className="grid md:grid-cols-2 gap-3 text-sm"><Info label="Pemohon" value={selected.requester_name} /><Info label="PT Pemohon" value={selected.requester_pt || '-'} /><Info label="Periode" value={`${formatDate(selected.departure_date)} s.d. ${formatDate(selected.return_date)}`} /><Info label="Cost Center" value={(selected.status === 'Pending Reimbursement Approval' ? reimbursementPT(selected) : selected.company_burden ?? []).join(', ') || '-'} /><Info label="Tujuan" value={selected.purpose} /><Info label="Rute" value={routeText(selected) || '-'} /><Info label="Estimasi / Settlement" value={selected.status === 'Pending Reimbursement Approval' ? selected.settlement_result || '-' : formatIDR(selected.cost_grand_total ?? 0)} /></div><div className="rounded-xl bg-slate-50 p-3 text-xs"><strong>Itinerary:</strong>{(selected.itinerary ?? []).map((leg, i) => <div key={leg.id} className="mt-1">{i + 1}. {formatDate(leg.start_date)} · {leg.destination_custom || leg.destination} · {leg.agenda || '-'}</div>)}</div><div className="flex justify-end gap-2">{renderPrimaryAction(selected)}<Button variant="danger" onClick={() => { setRejectTrip(selected); setRejectReason(''); }}>Reject</Button></div></div>}</Modal>
+   <Modal
+  open={!!selected}
+  onClose={() => setSelected(null)}
+  title="Detail Pengajuan"
+>
+  {selected && (
+    <div className="space-y-4">
+      {(() => {
+        const submitEvent = tracking
+          .filter(
+            (row) =>
+              row.trip_id === selected.id &&
+              (
+                row.action === 'Trip request submitted' ||
+                row.action === 'Trip request submitted on behalf of employee'
+              )
+          )
+          .sort(
+            (a, b) =>
+              new Date(a.created_at).getTime() -
+              new Date(b.created_at).getTime()
+          )[0];
+
+        const submittedBy =
+          submitEvent?.actor_name ||
+          selected.requester_name;
+
+        const additionalParticipants =
+          (selected.participants ?? []).filter(
+            (participant) =>
+              participant.id !== 'main-applicant' &&
+              !(
+                participant.name === selected.requester_name &&
+                participant.nip &&
+                participant.nip === selected.requester_nip
+              )
+          );
+
+        return (
+          <>
+            <div className="grid md:grid-cols-2 gap-3 text-sm">
+              <Info
+                label="Submitted By"
+                value={`${submittedBy}${
+                  submitEvent?.actor_role
+                    ? ` · ${submitEvent.actor_role}`
+                    : ''
+                }`}
+              />
+
+              <Info
+                label="Traveler Utama"
+                value={selected.requester_name}
+              />
+
+              <Info
+                label="NIP Traveler"
+                value={selected.requester_nip || '-'}
+              />
+
+              <Info
+                label="Jabatan Traveler"
+                value={selected.requester_jabatan}
+              />
+
+              <Info
+                label="PT Traveler"
+                value={selected.requester_pt || '-'}
+              />
+
+              <Info
+                label="Periode"
+                value={`${formatDate(
+                  selected.departure_date
+                )} s.d. ${formatDate(
+                  selected.return_date
+                )}`}
+              />
+
+              <Info
+                label="Cost Center"
+                value={
+                  (
+                    selected.status ===
+                    'Pending Reimbursement Approval'
+                      ? reimbursementPT(selected)
+                      : selected.company_burden ?? []
+                  ).join(', ') || '-'
+                }
+              />
+
+              <Info
+                label="Tujuan"
+                value={selected.purpose}
+              />
+
+              <Info
+                label="Rute"
+                value={routeText(selected) || '-'}
+              />
+
+              <Info
+                label="Estimasi / Settlement"
+                value={
+                  selected.status ===
+                  'Pending Reimbursement Approval'
+                    ? selected.settlement_result || '-'
+                    : formatIDR(
+                        selected.cost_grand_total ?? 0
+                      )
+                }
+              />
+            </div>
+
+            {/* PARTICIPANTS */}
+            <div className="rounded-xl bg-slate-50 p-3">
+              <strong className="text-xs">
+                Partisipan Tambahan
+              </strong>
+
+              {additionalParticipants.length === 0 ? (
+                <div className="text-xs text-slate-400 mt-2">
+                  Tidak ada partisipan tambahan.
+                </div>
+              ) : (
+                <div className="space-y-1.5 mt-2">
+                  {additionalParticipants.map(
+                    (participant, index) => (
+                      <div
+                        key={participant.id || index}
+                        className="text-xs flex justify-between gap-3"
+                      >
+                        <span>
+                          {participant.name}
+                        </span>
+
+                        <span className="text-slate-500">
+                          {participant.category === 'Eksternal'
+                            ? participant.keterangan || 'Eksternal'
+                            : `${participant.jabatan} · ${
+                                participant.pt_unit || '-'
+                              }`}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ITINERARY */}
+            <div className="rounded-xl bg-slate-50 p-3 text-xs">
+              <strong>Itinerary:</strong>
+
+              {(selected.itinerary ?? []).map(
+                (leg, index) => (
+                  <div
+                    key={leg.id}
+                    className="mt-1"
+                  >
+                    {index + 1}.{' '}
+                    {formatDate(leg.start_date)} ·{' '}
+                    {leg.destination_custom ||
+                      leg.destination}{' '}
+                    · {leg.agenda || '-'}
+                  </div>
+                )
+              )}
+            </div>
+
+            {/* DRIVER ASSIGNMENT */}
+            {(selected.obligo_driver_name ||
+              selected.obligo_vehicle_plate) && (
+              <div className="rounded-xl bg-brand-50 p-3 text-xs">
+                <strong>
+                  Vehicle & Driver Assignment
+                </strong>
+
+                <div className="grid md:grid-cols-2 gap-2 mt-2">
+                  <span>
+                    Vehicle:{' '}
+                    {selected.obligo_vehicle_type || '-'}{' '}
+                    ·{' '}
+                    {selected.obligo_vehicle_plate || '-'}
+                  </span>
+
+                  <span>
+                    Driver:{' '}
+                    {selected.obligo_driver_name || '-'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              {renderPrimaryAction(selected)}
+
+              <Button
+                variant="danger"
+                onClick={() => {
+                  setRejectTrip(selected);
+                  setRejectReason('');
+                }}
+              >
+                Reject
+              </Button>
+            </div>
+          </>
+        );
+      })()}
+    </div>
+  )}
+</Modal>
     <Modal open={!!rejectTrip} onClose={() => setRejectTrip(null)} title="Reject Pengajuan"><div className="space-y-4"><Field label="Alasan Reject" required><Textarea rows={4} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} /></Field><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setRejectTrip(null)}>Cancel</Button><Button variant="danger" onClick={doReject}>Reject</Button></div></div></Modal>
   </div>;
 }
