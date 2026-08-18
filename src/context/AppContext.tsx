@@ -232,6 +232,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await supabase.from('trip_tracking').insert({
       trip_id: id,
       actor_name: trip.requester_name,
+      actor_role: 'System',
       action: `Status changed to ${status}`,
       from_status: trip.status,
       to_status: status,
