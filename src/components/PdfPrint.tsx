@@ -597,31 +597,47 @@ export function PdfPrint({
             }
 
             .attachment-page {
-              break-before: page !important;
-              page-break-before: always !important;
               width: 100% !important;
-              height: 273mm !important;
-              min-height: 273mm !important;
-              margin: 0 !important;
+              margin: 10mm 0 0 !important;
               padding: 0 !important;
               box-sizing: border-box !important;
-              display: flex !important;
-              flex-direction: column !important;
-              overflow: hidden !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+              display: block !important;
+              overflow: visible !important;
             }
 
             .attachment-image {
               display: block !important;
               width: auto !important;
               height: auto !important;
-              max-width: 170mm !important;
-              max-height: 220mm !important;
+              max-width: 600px !important;
+              max-height: 600px !important;
               object-fit: contain !important;
-              margin: 8mm auto 0 !important;
+              margin: 8px auto 0 !important;
             }
 
             .attachment-pdf {
               display: none !important;
+            }
+
+            .timeline-footer {
+              margin-top: 8mm !important;
+              padding-top: 4mm !important;
+              border-top: 1px solid #334155 !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+              font-size: 9px !important;
+              line-height: 1.45 !important;
+            }
+
+            .timeline-footer table,
+            .timeline-footer thead,
+            .timeline-footer tbody,
+            .timeline-footer tr,
+            .timeline-footer td,
+            .timeline-footer th {
+              border: 0 !important;
             }
 
             .pdf-print-note {
@@ -838,72 +854,88 @@ export function PdfPrint({
         {mode ===
         'advance' ? (
           <>
-            <Section title="A. Rincian Biaya Advance">
-              <Table
-                headers={[
-                  'Nama',
-                  'Matrix / Komponen',
-                  'Nominal',
-                ]}
-              >
-                {participants.map(
-                  (
-                    participant,
-                    index
-                  ) => (
-                    <tr
-                      key={
-                        index
-                      }
-                    >
-                      <TD>
-                        {
-                          participant.name
-                        }
-                      </TD>
+            <Section title="A. Rincian Pembiayaan">
+              <table className="w-full border-collapse text-[10px]">
+                <thead>
+                  <tr>
+                    <th className="border px-2 py-1.5 text-left bg-slate-50">Nama</th>
+                    <th className="border px-2 py-1.5 text-left bg-slate-50">Rate / Ketentuan</th>
+                    <th className="border px-2 py-1.5 text-left bg-slate-50">Hari</th>
+                    <th className="border px-2 py-1.5 text-left bg-slate-50">Tunjangan</th>
+                    <th className="border px-2 py-1.5 text-left bg-slate-50">BBM</th>
+                    <th className="border px-2 py-1.5 text-left bg-slate-50">E-Toll</th>
+                    <th className="border px-2 py-1.5 text-left bg-slate-50">Petty Cash</th>
+                    <th className="border px-2 py-1.5 text-left bg-slate-50">Insentif</th>
+                    <th className="border px-2 py-1.5 text-left bg-slate-50">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {participants.map((participant, index) => {
+                    const legs = Array.isArray(participant.legs) ? participant.legs : [];
+                    const eligibleLegs = legs.filter((leg: any) => leg.enabled !== false && Number(leg.amount) > 0);
 
-                      <TD>
-                        {participant.grade ||
-                          participant.jabatan ||
-                          '-'}
-                      </TD>
+                    const allowance = Number(participant.total) || 0;
+                    const pettyCash = Number(participant.pettyCash) || 0;
 
-                      <TD>
-                        {formatIDR(
-                          (Number(
-                            participant.total
-                          ) ||
-                            0) +
-                            (Number(
-                              participant.hotel
-                            ) ||
-                              0) +
-                            (Number(
-                              participant.pettyCash
-                            ) ||
-                              0)
-                        )}
-                      </TD>
-                    </tr>
-                  )
-                )}
+                    const fuel = advanceRows
+                      .filter((row) => row.name === participant.name && String(row.component_note || '').toUpperCase().includes('BBM'))
+                      .reduce((sum, row) => sum + (Number(row.nominal) || 0), 0);
 
-                <tr className="font-bold bg-slate-50">
-                  <TD
-                    colSpan={
-                      2
-                    }
-                  >
-                    GRAND TOTAL ADVANCE
-                  </TD>
+                    const etoll = advanceRows
+                      .filter((row) => row.name === participant.name && String(row.component_note || '').toUpperCase().includes('E-TOLL'))
+                      .reduce((sum, row) => sum + (Number(row.nominal) || 0), 0);
 
-                  <TD>
-                    {formatIDR(
-                      advanceTotal
-                    )}
-                  </TD>
-                </tr>
-              </Table>
+                    const incentive = advanceRows
+                      .filter((row) => row.name === participant.name && String(row.component_note || '').toUpperCase().includes('INSENTIF'))
+                      .reduce((sum, row) => sum + (Number(row.nominal) || 0), 0);
+
+                    const daysTotal = eligibleLegs.reduce((sum: number, leg: any) => sum + (Number(leg.days) || 0), 0);
+
+                    const rateLabels = Array.from(
+                      new Set(
+                        eligibleLegs.map((leg: any) => {
+                          const rate = Number(leg.rate) || 0;
+                          if (!rate) return null;
+                          return `${formatIDR(rate)}${leg.flat ? ' / trip' : ' / hari'}`;
+                        }).filter(Boolean)
+                      )
+                    );
+
+                    const rateLabel =
+                      rateLabels.length === 0
+                        ? '-'
+                        : rateLabels.length === 1
+                          ? rateLabels[0]
+                          : 'Sesuai itinerary';
+
+                    const subtotal =
+                      allowance +
+                      fuel +
+                      etoll +
+                      pettyCash +
+                      incentive;
+
+                    return (
+                      <tr key={participant.name || index}>
+                        <TD>{participant.name}</TD>
+                        <TD>{rateLabel}</TD>
+                        <TD>{daysTotal || '-'}</TD>
+                        <TD>{allowance > 0 ? formatIDR(allowance) : '-'}</TD>
+                        <TD>{fuel > 0 ? formatIDR(fuel) : '-'}</TD>
+                        <TD>{etoll > 0 ? formatIDR(etoll) : '-'}</TD>
+                        <TD>{pettyCash > 0 ? formatIDR(pettyCash) : '-'}</TD>
+                        <TD>{incentive > 0 ? formatIDR(incentive) : '-'}</TD>
+                        <TD>{formatIDR(subtotal)}</TD>
+                      </tr>
+                    );
+                  })}
+
+                  <tr className="font-bold bg-slate-50">
+                    <TD colSpan={8}>TOTAL</TD>
+                    <TD>{formatIDR(advanceTotal)}</TD>
+                  </tr>
+                </tbody>
+              </table>
             </Section>
 
             <Section title="B. Alokasi Cost Center">
@@ -1133,7 +1165,7 @@ export function PdfPrint({
         <section className="print-break-avoid mt-6 border-t-2 border-slate-900 pt-4">
           <div className="mb-2">
             <div className="text-[10px] font-bold uppercase tracking-wide">
-              Audit Trail Proses & SLA
+              Timeline Proses & SLA
             </div>
 
             <div className="text-[9px] text-slate-500 mt-0.5">
