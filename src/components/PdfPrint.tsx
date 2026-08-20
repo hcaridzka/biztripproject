@@ -531,13 +531,15 @@ export function PdfPrint({
       <style>
         {`
           @page {
-            size: A4;
+            size: A4 portrait;
             margin: 0;
           }
 
           @media print {
             html,
             body {
+              margin: 0 !important;
+              padding: 0 !important;
               background: #fff !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
@@ -553,16 +555,24 @@ export function PdfPrint({
             }
 
             #print-area {
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
+              position: static !important;
               width: 210mm !important;
+              min-height: auto !important;
+              height: auto !important;
               margin: 0 !important;
-              padding: 14mm !important;
+              padding: 12mm 14mm !important;
+              box-sizing: border-box !important;
+              overflow: visible !important;
             }
 
             .no-print {
               display: none !important;
+            }
+
+            .main-document {
+              width: 100% !important;
+              min-height: auto !important;
+              box-sizing: border-box !important;
             }
 
             .print-break-avoid {
@@ -570,34 +580,56 @@ export function PdfPrint({
               page-break-inside: avoid !important;
             }
 
+            table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+            }
+
+            thead {
+              display: table-header-group !important;
+            }
+
+            tr,
+            td,
+            th {
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
+
             .attachment-page {
-              break-before: page;
-              page-break-before: always;
-              min-height: 269mm;
+              break-before: page !important;
+              page-break-before: always !important;
+              width: 100% !important;
+              height: 273mm !important;
+              min-height: 273mm !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              box-sizing: border-box !important;
               display: flex !important;
               flex-direction: column !important;
+              overflow: hidden !important;
             }
 
             .attachment-image {
               display: block !important;
               width: auto !important;
               height: auto !important;
-              max-width: 600px !important;
-              max-height: 600px !important;
+              max-width: 170mm !important;
+              max-height: 220mm !important;
               object-fit: contain !important;
-              margin: 18mm auto 0 !important;
+              margin: 8mm auto 0 !important;
             }
 
             .attachment-pdf {
-              display: block !important;
-              width: 100% !important;
-              height: 235mm !important;
-              border: 0 !important;
+              display: none !important;
             }
 
-            tr {
-              break-inside: avoid;
-              page-break-inside: avoid;
+            .pdf-print-note {
+              display: block !important;
+              margin: 20mm auto !important;
+              text-align: center !important;
+              font-size: 10px !important;
+              line-height: 1.5 !important;
             }
           }
         `}
@@ -649,8 +681,9 @@ export function PdfPrint({
         onClick={(event) =>
           event.stopPropagation()
         }
-        className="mx-auto bg-white w-full max-w-[210mm] min-h-[297mm] px-[14mm] py-[12mm]"
+        className="mx-auto bg-white w-full max-w-[210mm] px-[14mm] py-[12mm]"
       >
+        <div className="main-document">
         <DocumentHeader
           title={
             mode ===
@@ -1237,6 +1270,8 @@ export function PdfPrint({
           </div>
         </section>
 
+        </div>
+
         {/* ATTACHMENTS */}
         {mode ===
           'settlement' &&
@@ -1321,16 +1356,29 @@ export function PdfPrint({
                       receipt.file_base64,
                       receipt.file_name
                     ) ? (
-                    <iframe
-                      src={
-                        receipt.file_base64
-                      }
-                      title={
-                        receipt.file_name ||
-                        receipt.category
-                      }
-                      className="attachment-pdf"
-                    />
+                    <>
+                      <iframe
+                        src={
+                          receipt.file_base64
+                        }
+                        title={
+                          receipt.file_name ||
+                          receipt.category
+                        }
+                        className="attachment-pdf"
+                      />
+
+                      <div className="pdf-print-note">
+                        <strong>Attachment PDF</strong>
+                        <br />
+                        {receipt.file_name ||
+                          receipt.category}
+                        <br />
+                        <span>
+                          File PDF tersedia pada attachment settlement.
+                        </span>
+                      </div>
+                    </>
                   ) : (
                     <div className="m-auto text-xs text-slate-500 text-center">
                       Attachment tidak dapat dirender langsung.
