@@ -553,7 +553,7 @@ export function PdfPrint({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-900/60 overflow-y-auto p-4 md:p-8"
+      className="print-modal-root fixed inset-0 z-50 bg-slate-900/60 overflow-y-auto p-4 md:p-8"
       onClick={onClose}
     >
       <style>
@@ -561,6 +561,10 @@ export function PdfPrint({
           @page {
             size: A4 portrait;
             margin: 0;
+          }
+
+          .pdf-print-note {
+            display: none;
           }
 
           @media print {
@@ -573,18 +577,37 @@ export function PdfPrint({
               print-color-adjust: exact !important;
             }
 
-            body * {
-              visibility: hidden !important;
+            /*
+             * IMPORTANT: jangan pakai visibility:hidden untuk seluruh app.
+             * Elemen hidden tetap mengambil ruang layout dan membuat Chrome
+             * mem-paginate halaman aplikasi di belakang modal print.
+             */
+            #root > * {
+              display: none !important;
             }
 
-            #print-area,
-            #print-area * {
-              visibility: visible !important;
+            #root > .print-modal-root {
+              display: block !important;
+            }
+
+            .print-modal-root {
+              position: static !important;
+              inset: auto !important;
+              width: 210mm !important;
+              height: auto !important;
+              min-height: 0 !important;
+              overflow: visible !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #fff !important;
             }
 
             #print-area {
               position: static !important;
               width: 210mm !important;
+              max-width: none !important;
+              height: auto !important;
+              min-height: 0 !important;
               margin: 0 !important;
               padding: 0 !important;
               box-sizing: border-box !important;
@@ -607,6 +630,9 @@ export function PdfPrint({
               box-sizing: border-box !important;
               display: flex !important;
               flex-direction: column !important;
+            }
+
+            .main-document.has-attachments {
               break-after: page !important;
               page-break-after: always !important;
             }
@@ -758,7 +784,7 @@ export function PdfPrint({
         }
         className="mx-auto bg-white w-full max-w-[210mm] px-[14mm] py-[12mm]"
       >
-        <div className="main-document">
+        <div className={`main-document ${mode === 'settlement' && receipts.some((receipt) => !!receipt.file_base64) ? 'has-attachments' : ''}`}>
           <div className="main-document-body">
         <DocumentHeader
           title={
