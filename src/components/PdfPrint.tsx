@@ -17,6 +17,7 @@ import {
   daysBetween,
   formatDate,
 } from '../lib/utils';
+import { supabase } from '../lib/supabase';
 
 const receiptStatusLabel = (
   status?: string
@@ -72,31 +73,10 @@ function splitMovementName(
   };
 }
 
-async function urlToDataUrl(
-  url: string
+function blobToDataUrl(
+  blob: Blob
 ): Promise<string> {
-  if (url.startsWith('data:')) {
-    return url;
-  }
-
-  const response = await fetch(
-    url,
-    {
-      mode: 'cors',
-      cache: 'no-store',
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      `HTTP ${response.status}`
-    );
-  }
-
-  const blob =
-    await response.blob();
-
-  return await new Promise<string>(
+  return new Promise<string>(
     (resolve, reject) => {
       const reader =
         new FileReader();
@@ -116,6 +96,76 @@ async function urlToDataUrl(
 
       reader.readAsDataURL(blob);
     }
+  );
+}
+
+function getReceiptStoragePath(
+  url: string
+) {
+  const marker =
+    '/storage/v1/object/public/receipts/';
+
+  const index =
+    url.indexOf(marker);
+
+  if (index === -1) {
+    return null;
+  }
+
+  return decodeURIComponent(
+    url.slice(
+      index +
+        marker.length
+    )
+  );
+}
+
+async function urlToDataUrl(
+  url: string
+): Promise<string> {
+  if (url.startsWith('data:')) {
+    return url;
+  }
+
+  /**
+   * SettlementForm menyimpan public URL Supabase.
+   * Untuk print, download langsung dari Storage lebih
+   * reliable daripada mengandalkan browser/CORS URL publik.
+   */
+  const storagePath =
+    getReceiptStoragePath(url);
+
+  if (storagePath) {
+    const {
+      data,
+      error,
+    } = await supabase.storage
+      .from('receipts')
+      .download(storagePath);
+
+    if (!error && data) {
+      return blobToDataUrl(data);
+    }
+  }
+
+  /**
+   * Fallback untuk URL attachment lama / eksternal.
+   */
+  const response = await fetch(
+    url,
+    {
+      cache: 'no-store',
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `HTTP ${response.status}`
+    );
+  }
+
+  return blobToDataUrl(
+    await response.blob()
   );
 }
 
@@ -160,7 +210,6 @@ export function PdfPrint({
     disburseRows,
     settlementClaimRows,
     settlementReceipts,
-    tracking,
   } = useApp();
 
   const [
@@ -232,37 +281,6 @@ export function PdfPrint({
       ]
     );
 
-  /**
-   * AUDIT TRAIL SLA
-   *
-   * Pakai trip_tracking sebagai sumber utama,
-   * karena paling lengkap untuk actor + waktu.
-   */
-  const tripTracking =
-    useMemo(
-      () =>
-        trip
-          ? tracking
-              .filter(
-                (row) =>
-                  row.trip_id ===
-                  trip.id
-              )
-              .sort(
-                (a, b) =>
-                  new Date(
-                    a.created_at
-                  ).getTime() -
-                  new Date(
-                    b.created_at
-                  ).getTime()
-              )
-          : [],
-      [
-        trip,
-        tracking,
-      ]
-    );
 
   useEffect(() => {
     let active = true;
@@ -380,93 +398,84 @@ export function PdfPrint({
     null;
 
   /**
-   * Fallback audit trail.
-   *
-   * Kalau tracking lama belum lengkap,
-   * data approval existing tetap ditampilkan.
+   * Audit trail dibuat compact seperti Timeline di web.
+   * Hanya tampil pada dokumen utama, bukan pada lampiran.
    */
-  const fallbackAuditRows =
-    [
-      {
-        label:
-          'Pengajuan Perjalanan',
-        actor:
-          trip.requester_name,
-        role: 'Employee',
-        date:
-          trip.submitted_at,
-      },
-      {
-        label:
-          'Manager Approval',
-        actor:
-          trip.manager_approved_by,
-        role: 'Manager',
-        date:
-          trip.manager_approved_at,
-      },
-      {
-        label:
-          'Assign Vehicle & Driver',
-        actor:
-          trip.obligo_approved_by,
-        role: 'PIC Obligo',
-        date:
-          trip.obligo_approved_at,
-      },
-      {
-        label:
-          'Direksi Approval',
-        actor:
-          trip.direksi_approved_by,
-        role: 'Direksi',
-        date:
-          trip.direksi_approved_at,
-      },
-      {
-        label:
-          'HR Cost Review / SPD',
-        actor: 'HR',
-        role: 'HR',
-        date:
-          trip.approved_at ??
-          trip.spd_issued_at,
-      },
-      {
-        label:
-          'Settlement Submitted',
-        actor:
-          trip.settlement_submitted_by,
-        role: 'Employee',
-        date:
-          trip.settlement_submitted_at,
-      },
-      {
-        label:
-          'HR Settlement Review',
-        actor:
-          trip.settlement_reviewed_by,
-        role: 'HR Manager',
-        date:
-          trip.settlement_reviewed_at,
-      },
-      {
-        label:
-          'Completed',
-        actor: '-',
-        role: 'System / HR',
-        date:
-          trip.completed_at,
-      },
-    ].filter(
-      (row) => row.date
-    );
+  const auditRows = [
+    {
+      label: 'Submitted',
+      actor:
+        trip.requester_name,
+      date:
+        trip.submitted_at,
+    },
+    {
+      label:
+        'Manager Approved',
+      actor:
+        trip.manager_approved_by,
+      date:
+        trip.manager_approved_at,
+    },
+    {
+      label:
+        'PIC Obligo Verified',
+      actor:
+        trip.obligo_approved_by,
+      date:
+        trip.obligo_approved_at,
+    },
+    {
+      label:
+        'Direksi Approved',
+      actor:
+        trip.direksi_approved_by,
+      date:
+        trip.direksi_approved_at,
+    },
+    {
+      label:
+        'HR Advance Approved',
+      actor: 'HR',
+      date:
+        trip.approved_at ??
+        trip.spd_issued_at,
+    },
+    ...(mode === 'settlement'
+      ? [
+          {
+            label:
+              'Settlement Submitted',
+            actor:
+              trip.settlement_submitted_by,
+            date:
+              trip.settlement_submitted_at,
+          },
+          {
+            label:
+              'Settlement Reviewed',
+            actor:
+              trip.settlement_reviewed_by ??
+              'HR',
+            date:
+              trip.settlement_reviewed_at,
+          },
+          {
+            label:
+              'Completed',
+            actor: '',
+            date:
+              trip.completed_at,
+          },
+        ]
+      : []),
+  ].filter(
+    (row) => row.date
+  );
 
   const handlePrint =
     async () => {
-      if (
-        attachmentsLoading
-      ) {
+      if (attachmentsLoading) {
         return;
       }
 
@@ -479,45 +488,64 @@ export function PdfPrint({
 
       await Promise.all(
         images.map(
-          (image) => {
-            if (
-              image.complete &&
-              image.naturalWidth >
-                0
-            ) {
-              return Promise.resolve();
+          async (image) => {
+            try {
+              if (
+                'decode' in image
+              ) {
+                await image.decode();
+                return;
+              }
+            } catch {
+              // fallback ke load listener di bawah
             }
 
-            return new Promise<void>(
+            if (
+              image.complete &&
+              image.naturalWidth > 0
+            ) {
+              return;
+            }
+
+            await new Promise<void>(
               (resolve) => {
-                const done =
-                  () =>
-                    resolve();
+                const done = () =>
+                  resolve();
 
                 image.addEventListener(
                   'load',
                   done,
-                  {
-                    once: true,
-                  }
+                  { once: true }
                 );
 
                 image.addEventListener(
                   'error',
                   done,
-                  {
-                    once: true,
-                  }
+                  { once: true }
                 );
 
                 setTimeout(
                   done,
-                  3000
+                  5000
                 );
               }
             );
           }
         )
+      );
+
+      /**
+       * Beri browser satu frame untuk paint seluruh
+       * lampiran sebelum membuka native print dialog.
+       */
+      await new Promise<void>(
+        (resolve) =>
+          requestAnimationFrame(
+            () =>
+              requestAnimationFrame(
+                () => resolve()
+              )
+          )
       );
 
       window.print();
@@ -557,10 +585,8 @@ export function PdfPrint({
             #print-area {
               position: static !important;
               width: 210mm !important;
-              min-height: auto !important;
-              height: auto !important;
               margin: 0 !important;
-              padding: 12mm 14mm !important;
+              padding: 0 !important;
               box-sizing: border-box !important;
               overflow: visible !important;
             }
@@ -569,15 +595,53 @@ export function PdfPrint({
               display: none !important;
             }
 
+            /*
+             * Dokumen utama dibuat seperti kertas resmi:
+             * header di atas, body di tengah, Audit Trail sebagai footer.
+             * Footer hanya milik main document dan tidak ikut lampiran.
+             */
             .main-document {
-              width: 100% !important;
-              min-height: auto !important;
+              width: 210mm !important;
+              min-height: 297mm !important;
+              padding: 12mm 14mm 10mm !important;
               box-sizing: border-box !important;
+              display: flex !important;
+              flex-direction: column !important;
+              break-after: page !important;
+              page-break-after: always !important;
             }
 
-            .print-break-avoid {
+            .main-document-body {
+              flex: 1 1 auto !important;
+            }
+
+            .audit-footer {
+              margin-top: auto !important;
+              padding-top: 3mm !important;
+              border-top: 1px solid #334155 !important;
               break-inside: avoid !important;
               page-break-inside: avoid !important;
+              font-size: 8px !important;
+              line-height: 1.35 !important;
+            }
+
+            .audit-footer-grid {
+              display: grid !important;
+              grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+              column-gap: 8mm !important;
+              row-gap: 1mm !important;
+              margin-top: 2mm !important;
+            }
+
+            .audit-footer-item {
+              display: flex !important;
+              gap: 2mm !important;
+              min-width: 0 !important;
+            }
+
+            .audit-footer-label {
+              min-width: 31mm !important;
+              font-weight: 700 !important;
             }
 
             table {
@@ -596,15 +660,24 @@ export function PdfPrint({
               page-break-inside: avoid !important;
             }
 
-            .attachment-page {
+            /*
+             * Lampiran dimulai setelah dokumen utama.
+             * Hanya section lampiran pertama yang memulai halaman baru;
+             * item-item foto berikutnya mengalir natural.
+             */
+            .attachments-wrapper {
+              width: 210mm !important;
+              padding: 12mm 14mm !important;
+              box-sizing: border-box !important;
+            }
+
+            .attachment-item {
               width: 100% !important;
-              margin: 10mm 0 0 !important;
+              margin: 0 0 10mm !important;
               padding: 0 !important;
               box-sizing: border-box !important;
               break-inside: avoid !important;
               page-break-inside: avoid !important;
-              display: block !important;
-              overflow: visible !important;
             }
 
             .attachment-image {
@@ -617,32 +690,18 @@ export function PdfPrint({
               margin: 8px auto 0 !important;
             }
 
+            /*
+             * iframe PDF tidak reliable saat parent window.print().
+             * Preview tetap tersedia di layar, namun hasil print diberi
+             * identitas attachment. Foto/scan akan tercetak penuh.
+             */
             .attachment-pdf {
               display: none !important;
             }
 
-            .timeline-footer {
-              margin-top: 8mm !important;
-              padding-top: 4mm !important;
-              border-top: 1px solid #334155 !important;
-              break-inside: avoid !important;
-              page-break-inside: avoid !important;
-              font-size: 9px !important;
-              line-height: 1.45 !important;
-            }
-
-            .timeline-footer table,
-            .timeline-footer thead,
-            .timeline-footer tbody,
-            .timeline-footer tr,
-            .timeline-footer td,
-            .timeline-footer th {
-              border: 0 !important;
-            }
-
             .pdf-print-note {
               display: block !important;
-              margin: 20mm auto !important;
+              margin: 8mm auto !important;
               text-align: center !important;
               font-size: 10px !important;
               line-height: 1.5 !important;
@@ -700,6 +759,7 @@ export function PdfPrint({
         className="mx-auto bg-white w-full max-w-[210mm] px-[14mm] py-[12mm]"
       >
         <div className="main-document">
+          <div className="main-document-body">
         <DocumentHeader
           title={
             mode ===
@@ -1161,153 +1221,59 @@ export function PdfPrint({
           </>
         )}
 
-        {/* SLA / PROCESS AUDIT TRAIL */}
-        <section className="print-break-avoid mt-6 border-t-2 border-slate-900 pt-4">
-          <div className="mb-2">
-            <div className="text-[10px] font-bold uppercase tracking-wide">
-              Timeline Proses & SLA
-            </div>
-
-            <div className="text-[9px] text-slate-500 mt-0.5">
-              Jejak proses berdasarkan aktivitas sistem untuk monitoring waktu pengajuan dan persetujuan.
-            </div>
           </div>
 
-          {tripTracking.length >
-          0 ? (
-            <table className="w-full border-collapse text-[9px]">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="border px-2 py-1.5 text-left">
-                    Proses
-                  </th>
+          <footer className="audit-footer">
+            <div className="text-[9px] font-bold uppercase tracking-wide">
+              Audit Trail
+            </div>
 
-                  <th className="border px-2 py-1.5 text-left">
-                    Oleh
-                  </th>
+            <div className="audit-footer-grid">
+              {auditRows.map(
+                (row, index) => (
+                  <div
+                    key={`${row.label}-${index}`}
+                    className="audit-footer-item"
+                  >
+                    <span className="audit-footer-label">
+                      {row.label}
+                    </span>
 
-                  <th className="border px-2 py-1.5 text-left">
-                    Role
-                  </th>
+                    <span>
+                      {formatTrackingDate(
+                        row.date
+                      )}
+                      {row.actor
+                        ? ` · ${row.actor}`
+                        : ''}
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
 
-                  <th className="border px-2 py-1.5 text-left">
-                    Tanggal / Jam
-                  </th>
-
-                  <th className="border px-2 py-1.5 text-left">
-                    Keterangan
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {tripTracking.map(
-                  (row) => (
-                    <tr
-                      key={
-                        row.id
-                      }
-                    >
-                      <TD>
-                        {
-                          row.action
-                        }
-                      </TD>
-
-                      <TD>
-                        {row.actor_name ||
-                          '-'}
-                      </TD>
-
-                      <TD>
-                        {row.actor_role ||
-                          '-'}
-                      </TD>
-
-                      <TD>
-                        {formatTrackingDate(
-                          row.created_at
-                        )}
-                      </TD>
-
-                      <TD>
-                        {row.remarks ||
-                          '-'}
-                      </TD>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          ) : (
-            <table className="w-full border-collapse text-[9px]">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="border px-2 py-1.5 text-left">
-                    Proses
-                  </th>
-
-                  <th className="border px-2 py-1.5 text-left">
-                    Oleh
-                  </th>
-
-                  <th className="border px-2 py-1.5 text-left">
-                    Role
-                  </th>
-
-                  <th className="border px-2 py-1.5 text-left">
-                    Tanggal / Jam
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {fallbackAuditRows.map(
-                  (
-                    row,
-                    index
-                  ) => (
-                    <tr
-                      key={`${row.label}-${index}`}
-                    >
-                      <TD>
-                        {
-                          row.label
-                        }
-                      </TD>
-
-                      <TD>
-                        {row.actor ||
-                          '-'}
-                      </TD>
-
-                      <TD>
-                        {row.role}
-                      </TD>
-
-                      <TD>
-                        {formatTrackingDate(
-                          row.date
-                        )}
-                      </TD>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          )}
-
-          <div className="mt-3 text-[8px] text-slate-400 text-right">
-            Dokumen diterbitkan melalui Business Trip Management System.
-          </div>
-        </section>
-
+            <div className="mt-2 text-[7px] text-slate-400 text-right">
+              Dokumen diterbitkan melalui Business Trip Management System.
+            </div>
+          </footer>
         </div>
 
         {/* ATTACHMENTS */}
-        {mode ===
-          'settlement' &&
-          receipts.map(
+        {mode === 'settlement' && (
+          <div className="attachments-wrapper">
+            <div className="mb-5">
+              <div className="text-[10px] tracking-[0.28em] text-slate-500">
+                ARIDZKA GROUP
+              </div>
+              <div className="text-[15px] font-bold mt-1">
+                LAMPIRAN SETTLEMENT
+              </div>
+              <div className="text-[9px] text-slate-500 mt-1">
+                Nomor: {trip.settlement_number ?? `Lap ${trip.spd_number ?? '-'}`}
+              </div>
+            </div>
+
+          {receipts.map(
             (
               receipt,
               index
@@ -1317,7 +1283,7 @@ export function PdfPrint({
                   key={
                     receipt.id
                   }
-                  className="attachment-page pt-3"
+                  className="attachment-item"
                 >
                   <div className="border-b-2 border-slate-900 pb-3 mb-3">
                     <div className="text-[10px] font-semibold tracking-wide">
@@ -1422,6 +1388,8 @@ export function PdfPrint({
                 </section>
               ) : null
           )}
+          </div>
+        )}
       </main>
     </div>
   );
